@@ -200,3 +200,22 @@ def test_trace_clock_backwards_and_observer_failure():
     with patch.object(trace, "record", side_effect=RuntimeError):
         t._trace("TX", source="control")
     assert len(trace.snapshot()) == 2
+
+
+async def test_gateway_loss_wakeup_does_not_skip_backoff(hass, gateway, device):
+    hub = Hub.create(hass, "127.0.0.1", gateway.port, (device,), 0, 30)
+    c = hub.coordinator
+    c.gateway_lost()  # The schedule wake is already set.
+    c.next_backoff = lambda: 0.05
+    try:
+        c.start()
+        await asyncio.sleep(0.01)
+        assert gateway.connections == 0
+        for _ in range(100):
+            if c.gateway_available:
+                break
+            await asyncio.sleep(0.002)
+        assert c.gateway_available and gateway.connections == 1
+        assert gateway.requests == []
+    finally:
+        await hub.stop()

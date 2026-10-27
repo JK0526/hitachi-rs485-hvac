@@ -205,7 +205,7 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
         loop = asyncio.get_running_loop()
         while not self._closed:
             if not self.gateway_available:
-                await self._wait(self.next_backoff())
+                await asyncio.sleep(self.next_backoff())
                 try:
                     await self.transport.connect()
                 except GatewayError:
