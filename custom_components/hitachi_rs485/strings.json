@@ -1,0 +1,206 @@
+{
+  "title": "Hitachi RS485 HVAC",
+  "config": {
+    "step": {
+      "user": {
+        "title": "TCP gateway",
+        "description": "Use transparent RTU over TCP, not MBAP Modbus TCP.",
+        "data": {
+          "host": "Gateway host",
+          "port": "Gateway port"
+        }
+      },
+      "scan_range": {
+        "title": "Search RS485 devices",
+        "description": "Set the range, then press Start search. Only reads are sent.",
+        "data": {
+          "scan_start": "First slave",
+          "scan_end": "Last slave"
+        },
+        "submit": "Start search"
+      },
+      "scan": {
+        "title": "Searching",
+        "description": "Scanned {current} / {total}; found {found}."
+      },
+      "select": {
+        "title": "Found devices",
+        "description": "Found:\n{found}\nExisting: {existing}\nMissing (retained): {missing}\nSelect supported new devices. Unsupported devices cannot be installed.",
+        "data": {
+          "devices": "New devices"
+        }
+      },
+      "scan_failed": {
+        "title": "Search failed",
+        "description": "Check the gateway connection and retry.",
+        "menu_options": {
+          "scan_range": "Search again",
+          "cancel": "Cancel"
+        }
+      },
+      "summary": {
+        "title": "Review changes",
+        "description": "{summary}",
+        "menu_options": {
+          "confirm": "Confirm and save",
+          "cancel": "Cancel without saving",
+          "back": "Back to edit"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure gateway",
+        "description": "Use transparent RTU over TCP, not MBAP Modbus TCP.",
+        "data": {
+          "host": "Gateway host",
+          "port": "Gateway port"
+        }
+      }
+    },
+    "error": {
+      "invalid_range": "Use a range within 1–247.",
+      "no_devices": "Select a supported device.",
+      "invalid_host": "Invalid hostname or IP address.",
+      "cannot_connect": "Cannot connect to gateway.",
+      "invalid_settings": "Invalid polling interval or scan range."
+    },
+    "abort": {
+      "cancelled": "Cancelled; no changes saved.",
+      "already_configured": "This gateway is already configured.",
+      "reconfigure_successful": "Gateway updated."
+    },
+    "progress": {
+      "scan": "Searching RS485 devices"
+    }
+  },
+  "options": {
+    "step": {
+      "scan_range": {
+        "title": "Search RS485 devices",
+        "description": "Set the range, then press Start search. Only reads are sent.",
+        "data": {
+          "scan_start": "First slave",
+          "scan_end": "Last slave"
+        },
+        "submit": "Start search"
+      },
+      "scan": {
+        "title": "Searching",
+        "description": "Scanned {current} / {total}; found {found}."
+      },
+      "select": {
+        "title": "Found devices",
+        "description": "Found:\n{found}\nExisting: {existing}\nMissing (retained): {missing}\nSelect supported new devices. Unsupported devices cannot be installed.",
+        "data": {
+          "devices": "New devices"
+        }
+      },
+      "scan_failed": {
+        "title": "Search failed",
+        "description": "Check the gateway connection and retry.",
+        "menu_options": {
+          "scan_range": "Search again",
+          "cancel": "Cancel"
+        }
+      },
+      "summary": {
+        "title": "Review changes",
+        "description": "{summary}",
+        "menu_options": {
+          "confirm": "Confirm and save",
+          "cancel": "Cancel without saving",
+          "back": "Back to edit"
+        }
+      },
+      "menu": {
+        "title": "Device management",
+        "menu_options": {
+          "scan_range": "Add devices / Search RS485 devices",
+          "manage": "Manage installed devices",
+          "communication": "Communication settings",
+          "summary": "Review changes",
+          "cancel": "Cancel"
+        }
+      },
+      "manage": {
+        "title": "Manage installed devices",
+        "data": {
+          "slave": "Device"
+        }
+      },
+      "device": {
+        "title": "Slave #{slave}",
+        "description": "Auto heat support uses official identity or observed HEAT. Remove is applied only after final confirmation.",
+        "data": {
+          "heat": "Heat support",
+          "remove": "Remove device"
+        }
+      },
+      "communication": {
+        "title": "Communication settings",
+        "description": "Fast: 0 disables all background reads; otherwise ≥0.5 s. Slow: 0 disables slow reads; otherwise ≥10 s.",
+        "data": {
+          "fast_poll_interval": "Fast poll interval (s)",
+          "slow_poll_interval": "Slow poll interval (s)",
+          "scan_start": "First slave",
+          "scan_end": "Last slave"
+        }
+      }
+    },
+    "error": {
+      "invalid_range": "Use a range within 1–247.",
+      "no_devices": "Select a supported device.",
+      "invalid_host": "Invalid hostname or IP address.",
+      "cannot_connect": "Cannot connect to gateway.",
+      "invalid_settings": "Invalid polling interval or scan range."
+    },
+    "abort": {
+      "cancelled": "Cancelled; no changes saved.",
+      "already_configured": "This gateway is already configured.",
+      "reconfigure_successful": "Gateway updated."
+    },
+    "progress": {
+      "scan": "Searching RS485 devices"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy": {
+        "name": "Accumulated energy"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "current": {
+        "name": "Operating current"
+      },
+      "error_code": {
+        "name": "Error code"
+      },
+      "maintenance_runtime": {
+        "name": "Maintenance runtime"
+      },
+      "filter_runtime": {
+        "name": "Filter runtime"
+      }
+    },
+    "binary_sensor": {
+      "problem": {
+        "name": "Problem"
+      }
+    },
+    "climate": {
+      "climate": {
+        "name": "Air conditioner"
+      }
+    }
+  },
+  "selector": {
+    "heat": {
+      "options": {
+        "auto": "Auto",
+        "supported": "Supported",
+        "unsupported": "Unsupported"
+      }
+    }
+  }
+}

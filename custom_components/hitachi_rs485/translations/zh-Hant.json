@@ -1,0 +1,206 @@
+{
+  "title": "Hitachi RS485 HVAC",
+  "config": {
+    "step": {
+      "user": {
+        "title": "TCP 閘道器",
+        "description": "請使用透明 RTU over TCP，不能使用 MBAP Modbus TCP。",
+        "data": {
+          "host": "閘道器主機",
+          "port": "閘道器連接埠"
+        }
+      },
+      "scan_range": {
+        "title": "搜尋 RS485 裝置",
+        "description": "設定搜尋範圍後，按「開始搜尋」。搜尋只會讀取資料。",
+        "data": {
+          "scan_start": "起始 Slave",
+          "scan_end": "結束 Slave"
+        },
+        "submit": "開始搜尋"
+      },
+      "scan": {
+        "title": "正在搜尋",
+        "description": "已搜尋 {current} / {total}；找到 {found} 台裝置。"
+      },
+      "select": {
+        "title": "搜尋結果",
+        "description": "找到的裝置：\n{found}\n既有裝置：{existing}\n本次未找到（保留設定）：{missing}\n請選擇要新增的支援裝置。不支援的裝置無法安裝。",
+        "data": {
+          "devices": "新增裝置"
+        }
+      },
+      "scan_failed": {
+        "title": "搜尋失敗",
+        "description": "請檢查閘道器連線後重新搜尋。",
+        "menu_options": {
+          "scan_range": "重新搜尋",
+          "cancel": "取消"
+        }
+      },
+      "summary": {
+        "title": "確認變更",
+        "description": "{summary}",
+        "menu_options": {
+          "confirm": "確認並儲存",
+          "cancel": "取消，不儲存",
+          "back": "返回編輯"
+        }
+      },
+      "reconfigure": {
+        "title": "重新設定閘道器",
+        "description": "請使用透明 RTU over TCP，不能使用 MBAP Modbus TCP。",
+        "data": {
+          "host": "閘道器主機",
+          "port": "閘道器連接埠"
+        }
+      }
+    },
+    "error": {
+      "invalid_range": "請設定 1–247 之間的有效範圍。",
+      "no_devices": "請選擇支援的裝置。",
+      "invalid_host": "主機名稱或 IP 位址無效。",
+      "cannot_connect": "無法連線至閘道器。",
+      "invalid_settings": "輪詢週期或搜尋範圍無效。"
+    },
+    "abort": {
+      "cancelled": "已取消，未儲存變更。",
+      "already_configured": "此閘道器已完成設定。",
+      "reconfigure_successful": "已更新閘道器設定。"
+    },
+    "progress": {
+      "scan": "正在搜尋 RS485 裝置"
+    }
+  },
+  "options": {
+    "step": {
+      "scan_range": {
+        "title": "搜尋 RS485 裝置",
+        "description": "設定搜尋範圍後，按「開始搜尋」。搜尋只會讀取資料。",
+        "data": {
+          "scan_start": "起始 Slave",
+          "scan_end": "結束 Slave"
+        },
+        "submit": "開始搜尋"
+      },
+      "scan": {
+        "title": "正在搜尋",
+        "description": "已搜尋 {current} / {total}；找到 {found} 台裝置。"
+      },
+      "select": {
+        "title": "搜尋結果",
+        "description": "找到的裝置：\n{found}\n既有裝置：{existing}\n本次未找到（保留設定）：{missing}\n請選擇要新增的支援裝置。不支援的裝置無法安裝。",
+        "data": {
+          "devices": "新增裝置"
+        }
+      },
+      "scan_failed": {
+        "title": "搜尋失敗",
+        "description": "請檢查閘道器連線後重新搜尋。",
+        "menu_options": {
+          "scan_range": "重新搜尋",
+          "cancel": "取消"
+        }
+      },
+      "summary": {
+        "title": "確認變更",
+        "description": "{summary}",
+        "menu_options": {
+          "confirm": "確認並儲存",
+          "cancel": "取消，不儲存",
+          "back": "返回編輯"
+        }
+      },
+      "menu": {
+        "title": "設備管理",
+        "menu_options": {
+          "scan_range": "新增裝置／搜尋 RS485 裝置",
+          "manage": "管理已安裝裝置",
+          "communication": "通訊設定",
+          "summary": "確認變更",
+          "cancel": "取消"
+        }
+      },
+      "manage": {
+        "title": "管理已安裝裝置",
+        "data": {
+          "slave": "裝置"
+        }
+      },
+      "device": {
+        "title": "Slave #{slave}",
+        "description": "暖氣自動判斷依官方識別資料或曾回報的暖氣模式。移除裝置只會在最後確認後生效。",
+        "data": {
+          "heat": "暖氣支援",
+          "remove": "移除裝置"
+        }
+      },
+      "communication": {
+        "title": "通訊設定",
+        "description": "快速輪詢：0 停用所有背景讀取，啟用時至少 0.5 秒。慢速輪詢：0 停用慢速讀取，啟用時至少 10 秒。",
+        "data": {
+          "fast_poll_interval": "快速輪詢週期（秒）",
+          "slow_poll_interval": "慢速輪詢週期（秒）",
+          "scan_start": "起始 Slave",
+          "scan_end": "結束 Slave"
+        }
+      }
+    },
+    "error": {
+      "invalid_range": "請設定 1–247 之間的有效範圍。",
+      "no_devices": "請選擇支援的裝置。",
+      "invalid_host": "主機名稱或 IP 位址無效。",
+      "cannot_connect": "無法連線至閘道器。",
+      "invalid_settings": "輪詢週期或搜尋範圍無效。"
+    },
+    "abort": {
+      "cancelled": "已取消，未儲存變更。",
+      "already_configured": "此閘道器已完成設定。",
+      "reconfigure_successful": "已更新閘道器設定。"
+    },
+    "progress": {
+      "scan": "正在搜尋 RS485 裝置"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "energy": {
+        "name": "累積用電量"
+      },
+      "outdoor_temperature": {
+        "name": "室外溫度"
+      },
+      "current": {
+        "name": "運轉電流"
+      },
+      "error_code": {
+        "name": "故障碼"
+      },
+      "maintenance_runtime": {
+        "name": "保養累積運轉時間"
+      },
+      "filter_runtime": {
+        "name": "濾網清洗累積運轉時間"
+      }
+    },
+    "binary_sensor": {
+      "problem": {
+        "name": "故障"
+      }
+    },
+    "climate": {
+      "climate": {
+        "name": "空調"
+      }
+    }
+  },
+  "selector": {
+    "heat": {
+      "options": {
+        "auto": "自動判斷",
+        "supported": "支援",
+        "unsupported": "不支援"
+      }
+    }
+  }
+}

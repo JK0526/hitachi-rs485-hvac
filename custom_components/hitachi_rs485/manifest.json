@@ -1,0 +1,13 @@
+{
+  "domain": "hitachi_rs485",
+  "name": "Hitachi RS485 HVAC",
+  "version": "0.1.0",
+  "codeowners": ["@JK0526"],
+  "config_flow": true,
+  "dependencies": ["http", "panel_custom", "websocket_api"],
+  "documentation": "https://github.com/JK0526/hitachi-rs485-hvac",
+  "issue_tracker": "https://github.com/JK0526/hitachi-rs485-hvac/issues",
+  "integration_type": "hub",
+  "iot_class": "local_polling",
+  "requirements": []
+}
