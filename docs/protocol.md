@@ -48,7 +48,7 @@ Commercial units expose additional fan values; unknown readings remain raw/unkno
 
 1. Exclusive transport lease, FC03 0000 count 1. Timeout or CRC error: no confirmed device. Valid Modbus exception still confirms presence, so continue identity probes.
 2. Read 0005–0009 separately: RC-R01XT reports exception 02 for these. Unknown/partial identities stay visible as unsupported legacy/unknown. Types 7/8 identify dehumidifiers; 32 identifies heat exchanger. They never create climate entities.
-3. Supported AC identity probes 0004 and each optional sensor register independently. Exception 02/timeout leaves that capability absent; it does not invalidate the climate. Discovery never sends FC06/FC10.
+3. Supported AC identity probes 0004 and each optional sensor register independently. For a new device, exception 02 or timeout leaves that capability absent. On rescan, successful probes add capabilities, exception 02 removes a previously supported capability, and timeout, CRC errors, or other exceptions retain the previous capability. None invalidates the climate. After explicit exception 02 and confirmation, an existing sensor is no longer loaded; its entity-registry record is retained as unavailable for history. Discovery never sends FC06/FC10.
 4. Existing/missing/new classifications are shown in results. One failed scan never deletes a stored slave. The interface inference is based on the bulletin's RC-R02XT-only identity register support, not an invented hardware serial number.
 
 ## Write boundary

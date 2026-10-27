@@ -40,7 +40,7 @@
       },
       "summary": {
         "title": "Review changes",
-        "description": "{summary}",
+        "description": "Each device row: slave, heat setting, supported sensors.\n{summary}",
         "menu_options": {
           "confirm": "Confirm and save",
           "cancel": "Cancel without saving",
@@ -89,7 +89,7 @@
       },
       "select": {
         "title": "Found devices",
-        "description": "Found:\n{found}\nExisting: {existing}\nMissing (retained): {missing}\nSelect supported new devices. Unsupported devices cannot be installed.",
+        "description": "Found:\n{found}\nExisting: {existing}\nMissing (retained): {missing}\nSelect supported new devices or continue without adding one. Unsupported devices cannot be installed.",
         "data": {
           "devices": "New devices"
         }
@@ -104,7 +104,7 @@
       },
       "summary": {
         "title": "Review changes",
-        "description": "{summary}",
+        "description": "Each device row: slave, heat setting, supported sensors.\n{summary}",
         "menu_options": {
           "confirm": "Confirm and save",
           "cancel": "Cancel without saving",
@@ -143,6 +143,15 @@
           "slow_poll_interval": "Slow poll interval (s)",
           "scan_start": "First slave",
           "scan_end": "Last slave"
+        }
+      },
+      "no_new": {
+        "title": "Search results",
+        "description": "Found:\n{found}\nExisting: {existing}\nMissing (retained): {missing}\nThere are no supported new devices to add. Review the updated settings.",
+        "menu_options": {
+          "summary": "Review changes",
+          "scan_range": "Search again",
+          "cancel": "Cancel"
         }
       }
     },

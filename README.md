@@ -121,7 +121,7 @@ Host / Port 使用整合選單的 **Reconfigure／重新設定**，不放在 Opt
 3. CRC error：檢查配線、接地、鮑率與 gateway serial buffering；不要只加快重試。
 4. exception 02：該 register 可能不支援；optional capability 會略過，不影響 Climate。
 5. Climate state unknown：先明確刷新或啟用輪詢；未知 raw enum 可在 Diagnostics 與 Monitor 查看。
-6. Energy 不顯示：確認能力探測成功、慢速輪詢已啟用，等待實際數值；新增能力需重搜並重新安裝該裝置。
+6. Energy 不顯示：確認能力探測成功、慢速輪詢已啟用，等待實際數值；在整合選項重新搜尋並確認變更後，即可更新既有裝置的能力。暫時逾時或 CRC 錯誤不會移除既有能力；明確的 exception 02 才會移除該能力。
 7. Gateway 中斷：佇列內未送出的控制會丟棄，不會重連後重播。重連使用 1/2/4/8/15/30 秒有界退避。
 8. 詳細資料：HA 裝置與服務 → 整合 → 下載診斷；Host 會遮罩，包含身份、能力、raw、健康度與統計。請仍自行檢查再對外分享。
 

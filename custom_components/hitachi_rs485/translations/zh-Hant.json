@@ -40,7 +40,7 @@
       },
       "summary": {
         "title": "確認變更",
-        "description": "{summary}",
+        "description": "裝置列順序：Slave、暖氣設定、支援的感測器。\n{summary}",
         "menu_options": {
           "confirm": "確認並儲存",
           "cancel": "取消，不儲存",
@@ -89,7 +89,7 @@
       },
       "select": {
         "title": "搜尋結果",
-        "description": "找到的裝置：\n{found}\n既有裝置：{existing}\n本次未找到（保留設定）：{missing}\n請選擇要新增的支援裝置。不支援的裝置無法安裝。",
+        "description": "找到的裝置：\n{found}\n既有裝置：{existing}\n本次未找到（保留設定）：{missing}\n請選擇要新增的支援裝置，也可不選擇並繼續。不支援的裝置無法安裝。",
         "data": {
           "devices": "新增裝置"
         }
@@ -104,7 +104,7 @@
       },
       "summary": {
         "title": "確認變更",
-        "description": "{summary}",
+        "description": "裝置列順序：Slave、暖氣設定、支援的感測器。\n{summary}",
         "menu_options": {
           "confirm": "確認並儲存",
           "cancel": "取消，不儲存",
@@ -143,6 +143,15 @@
           "slow_poll_interval": "慢速輪詢週期（秒）",
           "scan_start": "起始 Slave",
           "scan_end": "結束 Slave"
+        }
+      },
+      "no_new": {
+        "title": "搜尋結果",
+        "description": "找到的裝置：\n{found}\n既有裝置：{existing}\n本次未找到（保留設定）：{missing}\n沒有可新增的支援裝置。請確認更新後的設定。",
+        "menu_options": {
+          "summary": "確認變更",
+          "scan_range": "重新搜尋",
+          "cancel": "取消"
         }
       }
     },

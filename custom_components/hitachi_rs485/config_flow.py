@@ -18,8 +18,8 @@ from homeassistant.helpers import selector
 
 from .const import DEFAULT_PORT, DOMAIN
 from .coordinator import valid_poll_interval
-from .models import HeatSupport, devices_from_options
-from .scanner import ScanResult, scan, validate_range
+from .models import Device, HeatSupport, devices_from_options
+from .scanner import ProbeStatus, ScanResult, scan, validate_range
 from .transport import GatewayError, Transport
 
 DEFAULTS = {
@@ -165,7 +165,13 @@ class DiscoveryFlow:
         except GatewayError:
             next_step = "scan_failed"
         else:
-            next_step = "select"
+            if isinstance(self, HitachiOptionsFlow):
+                self._refresh_existing()
+            next_step = (
+                "no_new"
+                if isinstance(self, HitachiOptionsFlow) and not self._candidates()
+                else "select"
+            )
         self._scan_task = None
         return self.async_show_progress_done(next_step_id=next_step)
 
@@ -179,27 +185,19 @@ class DiscoveryFlow:
     async def async_step_select(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        existing = {d["slave"] for d in self._draft["devices"]}
-        candidates = {
-            s: r for s, r in self._found.items() if r.supported and s not in existing
-        }
+        candidates = self._candidates()
         errors = {}
         if user_input is not None:
             selected = user_input.get("devices", [])
-            if not selected or any(int(s) not in candidates for s in selected):
+            if (not selected and not isinstance(self, HitachiOptionsFlow)) or any(
+                int(s) not in candidates for s in selected
+            ):
                 errors["base"] = "no_devices"
             else:
                 self._draft["devices"].extend(
                     candidates[int(s)].device.as_dict() for s in selected
                 )
                 return await self.async_step_summary()
-        found = (
-            "\n".join(
-                f"#{s}: {r.device.interface} / {r.device.family}"
-                for s, r in self._found.items()
-            )
-            or "—"
-        )
         return self.async_show_form(
             step_id="select",
             errors=errors,
@@ -217,13 +215,64 @@ class DiscoveryFlow:
                     )
                 }
             ),
-            description_placeholders={
-                "found": found,
-                "existing": ", ".join(map(str, sorted(existing & self._found.keys())))
-                or "—",
-                "missing": ", ".join(map(str, sorted(existing - self._found.keys())))
-                or "—",
-            },
+            description_placeholders=self._scan_descriptions(),
+        )
+
+    def _candidates(self) -> dict[int, ScanResult]:
+        existing = {d["slave"] for d in self._draft["devices"]}
+        return {
+            slave: result
+            for slave, result in self._found.items()
+            if result.supported and slave not in existing
+        }
+
+    def _scan_descriptions(self) -> dict[str, str]:
+        existing = {d["slave"] for d in self._draft["devices"]}
+        found = (
+            "\n".join(
+                f"#{s}: {r.device.interface} / {r.device.family}"
+                for s, r in self._found.items()
+            )
+            or "—"
+        )
+        return {
+            "found": found,
+            "existing": ", ".join(map(str, sorted(existing & self._found.keys())))
+            or "—",
+            "missing": ", ".join(map(str, sorted(existing - self._found.keys())))
+            or "—",
+        }
+
+    def _refresh_existing(self) -> None:
+        """Update only the draft; preserve settings and uncertain capabilities."""
+        updated = []
+        for raw in self._draft["devices"]:
+            result = self._found.get(raw["slave"])
+            if result is None or not result.supported:
+                updated.append(raw)
+                continue
+            old = Device.from_dict(raw)
+            capabilities = set(old.capabilities) | set(result.device.capabilities)
+            capabilities.difference_update(
+                name
+                for name, status in result.capability_probes.items()
+                if status == ProbeStatus.UNSUPPORTED
+            )
+            refreshed = replace(
+                result.device,
+                heat=old.heat,
+                capabilities=tuple(sorted(capabilities)),
+            )
+            updated.append(refreshed.as_dict())
+        self._draft["devices"] = updated
+
+    async def async_step_no_new(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self.async_show_menu(
+            step_id="no_new",
+            menu_options=["summary", "scan_range", "cancel"],
+            description_placeholders=self._scan_descriptions(),
         )
 
     async def async_step_summary(
@@ -234,7 +283,9 @@ class DiscoveryFlow:
             menu_options=["confirm", "back", "cancel"],
             description_placeholders={
                 "summary": "\n".join(
-                    f"Slave #{d['slave']} · {d['heat']}" for d in self._draft["devices"]
+                    f"Slave #{d['slave']} · {d['heat']} · "
+                    f"{', '.join(d.get('capabilities', [])) or '—'}"
+                    for d in self._draft["devices"]
                 )
                 + f"\nFast: {self._draft['fast_poll_interval']}s / Slow: {self._draft['slow_poll_interval']}s"
             },

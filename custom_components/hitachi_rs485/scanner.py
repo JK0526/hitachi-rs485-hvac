@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 
 from .models import Device
 from .profiles import (
@@ -21,10 +22,19 @@ from .transport import Transport
 _LOGGER = logging.getLogger(__name__)
 
 
+class ProbeStatus(StrEnum):
+    """A failed probe is not necessarily an unsupported capability."""
+
+    SUPPORTED = "supported"
+    UNSUPPORTED = "unsupported"
+    TRANSIENT_FAILURE = "transient_failure"
+
+
 @dataclass(frozen=True)
 class ScanResult:
     device: Device
     supported: bool
+    capability_probes: dict[str, ProbeStatus] = field(default_factory=dict)
 
     @property
     def slave(self) -> int:
@@ -36,15 +46,25 @@ def validate_range(start: int, end: int) -> None:
         raise ValueError("Invalid scan range")
 
 
-async def _probe(transport: Transport, slave: int, spec: PollSpec) -> dict[int, int]:
+async def _probe(
+    transport: Transport, slave: int, spec: PollSpec
+) -> tuple[dict[int, int], ProbeStatus]:
     try:
         response = await transport.submit(
             spec.request(slave), poll=True, exclusive=True
         )
-        return spec.decode(response)
+        return spec.decode(response), ProbeStatus.SUPPORTED
+    except DeviceException as error:
+        _LOGGER.debug("Slave %s probe 0x%04X failed: %s", slave, spec.start, error)
+        status = (
+            ProbeStatus.UNSUPPORTED
+            if error.code == 2
+            else ProbeStatus.TRANSIENT_FAILURE
+        )
+        return {}, status
     except (TimeoutError, ProtocolError) as error:
         _LOGGER.debug("Slave %s probe 0x%04X failed: %s", slave, spec.start, error)
-        return {}
+        return {}, ProbeStatus.TRANSIENT_FAILURE
 
 
 async def scan(
@@ -71,16 +91,20 @@ async def scan(
             else:
                 raw = DISCOVERY.decode(response)
             for register in IDENTITY_REGISTERS:
-                raw.update(await _probe(transport, slave, PollSpec(register)))
+                values, _ = await _probe(transport, slave, PollSpec(register))
+                raw.update(values)
             family, interface, supported = classify(raw)
             capabilities = []
+            capability_probes = {}
             if supported:
-                raw.update(await _probe(transport, slave, PollSpec(4)))
+                values, _ = await _probe(transport, slave, PollSpec(4))
+                raw.update(values)
                 for capability, register in OPTIONAL_REGISTERS.items():
-                    result = await _probe(transport, slave, PollSpec(register))
-                    if result:
+                    values, status = await _probe(transport, slave, PollSpec(register))
+                    capability_probes[capability] = status
+                    if status == ProbeStatus.SUPPORTED:
                         capabilities.append(capability)
-                        raw.update(result)
+                        raw.update(values)
             series, version = decode_identity(raw)
             found.append(
                 ScanResult(
@@ -96,6 +120,7 @@ async def scan(
                         identity=raw,
                     ),
                     supported,
+                    capability_probes,
                 )
             )
             if progress:
