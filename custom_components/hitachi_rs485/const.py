@@ -1,7 +1,7 @@
 """Integration identity and bus defaults."""
 
 DOMAIN = "hitachi_rs485"
-VERSION = "0.1.1rc1"
+VERSION = "0.1.1rc2"
 DEFAULT_PORT = 502
 DEFAULT_TIMEOUT = 1.0
 DEFAULT_FAST_POLL = 2.0

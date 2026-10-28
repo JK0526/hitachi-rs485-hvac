@@ -1,7 +1,7 @@
 {
   "domain": "hitachi_rs485",
   "name": "Hitachi RS485 HVAC",
-  "version": "0.1.1rc1",
+  "version": "0.1.1rc2",
   "codeowners": ["@JK0526"],
   "config_flow": true,
   "dependencies": ["http", "panel_custom", "websocket_api"],
