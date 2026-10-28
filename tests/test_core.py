@@ -167,6 +167,9 @@ async def test_scan_other_devices(gateway, kind):
             assert found == []
         elif kind == "exception":
             assert found[0].supported
+        elif kind == "probe_timeout":
+            assert found[0].supported
+            assert found[0].identity_errors[7] == "timeout"
         else:
             assert not found[0].supported
     finally:
@@ -411,3 +414,15 @@ async def test_zero_poll_and_invalid(hass, gateway, device):
     trace.record("TX", b"1", source="scan")
     trace.record("RX", b"2", source="scan", latency_ms=1.23456)
     assert len(trace.snapshot()) == 1 and trace.snapshot()[0]["latency_ms"] == 1.235
+
+async def test_real_nk_identity_and_individual_reads(gateway):
+    gateway.registers.update({4: 1, 5: 1, 6: 71, 7: 0x4E4B, 8: 0x2020, 9: 0x0400})
+    transport = make_transport(gateway)
+    try:
+        result = (await scan(transport, 1, 1))[0]
+        assert result.supported
+        assert (result.device.unit_type, result.device.capacity, result.device.series, result.device.saanet_version) == (1, 71, "NK", "4.0")
+        assert [p[2:6] for p in gateway.requests if p[2:4] in [i.to_bytes(2, "big") for i in range(4, 10)]] == [i.to_bytes(2, "big") + b"\x00\x01" for i in range(4, 10)]
+        assert decode_identity({7: 0x4142, 8: 0x4300})[0] == "ABC"
+    finally:
+        await transport.close()

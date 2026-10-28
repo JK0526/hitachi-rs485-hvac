@@ -35,6 +35,7 @@ class ScanResult:
     device: Device
     supported: bool
     capability_probes: dict[str, ProbeStatus] = field(default_factory=dict)
+    identity_errors: dict[int, str] = field(default_factory=dict)
 
     @property
     def slave(self) -> int:
@@ -90,15 +91,21 @@ async def scan(
                 continue
             else:
                 raw = DISCOVERY.decode(response)
+            identity_errors = {}
             for register in IDENTITY_REGISTERS:
-                values, _ = await _probe(transport, slave, PollSpec(register))
-                raw.update(values)
+                try:
+                    response = await transport.submit(PollSpec(register).request(slave), poll=True, exclusive=True)
+                    raw.update(PollSpec(register).decode(response))
+                except DeviceException as error:
+                    identity_errors[register] = f"exception {error.code}"
+                except TimeoutError:
+                    identity_errors[register] = "timeout"
+                except ProtocolError as error:
+                    identity_errors[register] = type(error).__name__
             family, interface, supported = classify(raw)
             capabilities = []
             capability_probes = {}
             if supported:
-                values, _ = await _probe(transport, slave, PollSpec(4))
-                raw.update(values)
                 for capability, register in OPTIONAL_REGISTERS.items():
                     values, status = await _probe(transport, slave, PollSpec(register))
                     capability_probes[capability] = status
@@ -121,6 +128,7 @@ async def scan(
                     ),
                     supported,
                     capability_probes,
+                    identity_errors,
                 )
             )
             if progress:

@@ -443,8 +443,8 @@ class HitachiRS485Monitor extends HTMLElement {
     const decoder = this.shadowRoot.querySelector("#decoder");
     decoder.replaceChildren();
     if (!transaction) { const empty = document.createElement("dd"); empty.className = "empty"; empty.textContent = "選取一筆 Trace 以檢視封包。"; decoder.append(empty); return; }
-    const device = devices.find((item) => item.slave === transaction.slave) || null;
-    for (const [label, value] of HitachiRS485Monitor.decodeTransaction(transaction, device)) {
+    const name = HitachiRS485Monitor._deviceName(transaction.slave, devices, this._transactions);
+    for (const [label, value] of [["Device", name], ...HitachiRS485Monitor.decodeTransaction(transaction)]) {
       const dt = document.createElement("dt"); dt.textContent = label;
       const dd = document.createElement("dd"); dd.textContent = value;
       decoder.append(dt, dd);
@@ -523,9 +523,26 @@ class HitachiRS485Monitor extends HTMLElement {
     return boundedLimit === 0 ? [] : merged.slice(-boundedLimit);
   }
 
-  static _deviceName(slave, devices) {
-    const device = devices?.find((item) => item.slave === slave);
-    return device ? String(device.model).toUpperCase() : "Unknown";
+  static _deviceName(slave, devices, transactions = []) {
+    const raw = {};
+    for (const item of transactions) {
+      if (item.slave !== slave || item.tx?.source !== "scan") continue;
+      const req = this.parseHex(item.tx?.raw_hex), rx = this.parseHex(item.rx?.raw_hex);
+      if (req[1] === 3 && req[4] === 0 && req[5] === 1 && rx[0] === slave && rx[1] === 3 && rx[2] === 2 && rx.length === 7) {
+        raw[req[2] * 256 + req[3]] = rx[3] * 256 + rx[4];
+      }
+    }
+    const decode = values => {
+      if (values[7] == null || values[8] == null) return "";
+      return [values[7] >> 8, values[7] & 255, values[8] >> 8, values[8] & 255]
+        .map(x => String.fromCharCode(x)).join("").split("\0")[0].trim();
+    };
+    const candidate = decode(raw);
+    if (candidate) return `Hitachi ${candidate}`;
+    const device = devices?.find(item => item.slave === slave);
+    if (device?.series) return `Hitachi ${device.series}`;
+    const fallback = decode(device?.identity || {});
+    return fallback ? `Hitachi ${fallback}` : "Identification unavailable";
   }
 
   static _registerName(address) {

@@ -636,3 +636,11 @@ test('FC06 FC10 and unknown packets stay read-only and bounded', () => {
  assert.match(JSON.stringify(C.decodeResponse(C.parseHex('01 03 02 00 19 00 00'))),/Raw Modbus/);
  assert.match(JSON.stringify(C.decodeResponse(C.parseHex('01 03 02 00 63 00 00'),C.parseHex('01 03 00 42 00 01 00 00'))),/Unknown/);
 });
+
+test('scan identity takes precedence and unknown series displays directly', () => {
+  const { Constructor } = createHarness();
+  const tx = (reg, value) => ({ slave: 1, tx: { source: 'scan', raw_hex: `01 03 00 0${reg} 00 01` }, rx: { raw_hex: `01 03 02 ${value} 00 00` } });
+  const scans = [tx(7, '4E 4B'), tx(8, '20 20')];
+  assert.equal(Constructor._deviceName(1, [{slave: 1, series: 'OLD'}], scans), 'Hitachi NK');
+  assert.equal(Constructor._deviceName(1, [{slave: 1, series: 'ABC'}]), 'Hitachi ABC');
+});

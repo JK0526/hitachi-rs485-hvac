@@ -9,6 +9,7 @@ import pytest
 from custom_components.hitachi_rs485.hub import Hub
 from custom_components.hitachi_rs485.profiles import TARGET
 from custom_components.hitachi_rs485.protocol import (
+    DeviceException,
     ProtocolError,
     frame,
     read_holding_registers,
@@ -152,12 +153,13 @@ async def test_idle_rx_unsolicited_and_bad_framing(gateway):
         await writer.drain()
         await asyncio.sleep(0.005)
         assert t.connected
-        # Malformed framing while idle forces gateway recovery, never a dead reader.
+        # Ignore stray bytes while idle and keep the reader alive.
         writer.write(bytes.fromhex("010303"))
         await writer.drain()
         await asyncio.sleep(0.005)
-        assert not t.connected
+        assert t.connected
         t._mark_connection_lost(OSError())  # duplicate loss notification is idempotent
+        t._mark_connection_lost(OSError())
     finally:
         await t.close()
 
@@ -219,3 +221,31 @@ async def test_gateway_loss_wakeup_does_not_skip_backoff(hass, gateway, device):
         assert gateway.requests == []
     finally:
         await hub.stop()
+
+async def test_stream_resynchronizes_and_handles_exception(socket_enabled):
+    async def handler(reader, writer):
+        try:
+            await reader.readexactly(8)
+            response = bytes.fromhex("7f 7e ff ff fd f7 eb 00 01 03 02 00 1b f8 4f 00")
+            for byte in response:
+                writer.write(bytes([byte]))
+                await writer.drain()
+                await asyncio.sleep(0)
+            await reader.readexactly(8)
+            writer.write(frame(bytes.fromhex("018303")))
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    server = await asyncio.start_server(handler, "127.0.0.1", 0)
+    t = Transport("127.0.0.1", server.sockets[0].getsockname()[1], timeout=1)
+    try:
+        assert await t.submit(read_holding_registers(1, 0, 1)) == bytes.fromhex("010302001bf84f")
+        with pytest.raises(DeviceException) as error:
+            await t.submit(read_holding_registers(1, 4, 1))
+        assert error.value.code == 3
+    finally:
+        await t.close()
+        server.close()
+        await server.wait_closed()

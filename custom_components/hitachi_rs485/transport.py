@@ -17,7 +17,7 @@ from .protocol import (
     CRCError,
     DeviceException,
     ProtocolError,
-    receive,
+    frame,
     validate,
 )
 from .trace import ProtocolTraceBuffer
@@ -81,6 +81,8 @@ class Transport:
         self._reader_task: asyncio.Task[None] | None = None
         self._pending_response: asyncio.Future[bytes] | None = None
         self._pending_source = "response"
+        self._pending_request: bytes | None = None
+        self._rx_observed = bytearray()
         self._worker: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
         self._idle = asyncio.Event()
@@ -168,9 +170,43 @@ class Transport:
 
     async def _read_loop(self, reader: asyncio.StreamReader) -> None:
         """Continuously own the socket reader and route complete RTU frames."""
+        buffer = bytearray()
         try:
             while reader is self._reader and not self._disconnecting:
-                packet = await receive(reader)
+                chunk = await reader.read(256)
+                if not chunk:
+                    raise asyncio.IncompleteReadError(bytes(buffer), None)
+                buffer.extend(chunk)
+                if self._pending_request is not None:
+                    self._rx_observed.extend(chunk)
+                    del self._rx_observed[:-512]
+                request = self._pending_request
+                packet = None
+                if request is not None:
+                    for offset in range(len(buffer)):
+                        if len(buffer) - offset < 2 or buffer[offset] != request[0]:
+                            continue
+                        function = buffer[offset + 1]
+                        if function == request[1] | 0x80:
+                            length = 5
+                        elif function == request[1] and function in (5, 6, 16):
+                            length = 8
+                        elif function == request[1] and function in (1, 2, 3, 4):
+                            if len(buffer) - offset < 3:
+                                continue
+                            length = buffer[offset + 2] + 5
+                            if length > 255:
+                                continue
+                        else:
+                            continue
+                        candidate = bytes(buffer[offset:offset + length])
+                        if len(candidate) == length and frame(candidate[:-2]) == candidate:
+                            packet = candidate
+                            del buffer[:offset + length]
+                            break
+                if packet is None:
+                    del buffer[:-512]
+                    continue
                 pending = self._pending_response
                 if pending is None or pending.done():
                     _LOGGER.debug("Consumed RTU frame without a pending request")
@@ -302,6 +338,8 @@ class Transport:
             raise GatewayError("Gateway is not connected")
         pending = asyncio.get_running_loop().create_future()
         self._pending_response = pending
+        self._pending_request = request
+        self._rx_observed.clear()
         self._pending_source = source
         try:
             async with asyncio.timeout(self.timeout):
@@ -316,6 +354,20 @@ class Transport:
             )
             return result
         except TimeoutError:
+            observed = self._rx_observed
+            for offset in range(len(observed) - 4):
+                if observed[offset + 1] != request[1]:
+                    continue
+                length = (observed[offset + 2] + 5 if request[1] in (1, 2, 3, 4) else 8)
+                packet = bytes(observed[offset:offset + length])
+                if len(packet) != length:
+                    continue
+                if packet[0] == request[0] and frame(packet[:-2]) != packet:
+                    raise CRCError("Invalid CRC") from None
+                if frame(packet[:-2]) == packet and packet[0] != request[0]:
+                    raise ProtocolError("Wrong slave") from None
+            if len(observed) >= 3 and observed[0] == request[0] and observed[1] == request[1] and request[1] in (3, 4) and (observed[2] == 0 or observed[2] % 2):
+                raise ProtocolError("Unsupported read size") from None
             self._trace(
                 "TIMEOUT",
                 source=source,
@@ -339,6 +391,7 @@ class Transport:
         finally:
             if self._pending_response is pending:
                 self._pending_response = None
+                self._pending_request = None
             if not pending.done():
                 pending.cancel()
 

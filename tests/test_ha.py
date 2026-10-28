@@ -132,7 +132,7 @@ async def test_entities_confirmed_and_metadata(hass, entry, device, gateway, hub
 async def test_diagnostics(hass, entry, hub, device):
     hub.coordinator.states[1].available = True
     result = await async_get_config_entry_diagnostics(hass, entry)
-    assert result["integration"]["version"] == "0.1.0"
+    assert result["integration"]["version"] == "0.1.1rc1"
     assert result["gateway"]["host"] == "**REDACTED**"
     assert "127.0.0.1" not in str(result)
     assert result["devices"][0]["capabilities"] == list(device.capabilities)

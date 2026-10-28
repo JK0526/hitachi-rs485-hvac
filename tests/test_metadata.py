@@ -11,7 +11,7 @@ def test_versions_manifest_and_translations():
     base = ROOT / "custom_components" / "hitachi_rs485"
     manifest = json.loads((base / "manifest.json").read_text())
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert manifest["version"] == project["project"]["version"] == VERSION == "0.1.0"
+    assert manifest["version"] == project["project"]["version"] == VERSION == "0.1.1rc1"
     assert manifest["requirements"] == []
     assert (
         manifest["integration_type"] == "hub"
