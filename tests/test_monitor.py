@@ -234,13 +234,35 @@ async def test_manual_ws_failures(ws, monitored, entry, condition, code):
 async def test_unauthenticated_manual_cannot_execute(
     hass, aiohttp_client, socket_enabled
 ):
+    from aiohttp import web
+
     assert await async_setup_component(hass, "websocket_api", {})
     websocket_api.async_register_command(hass, websocket_manual)
-    client = await aiohttp_client(hass.http.app)
-    socket = await client.ws_connect("/api/websocket")
-    assert (await socket.receive_json())["type"] == "auth_required"
-    await socket.send_json({"type": "auth", "access_token": "invalid"})
-    assert (await socket.receive_json())["type"] == "auth_invalid"
-    await socket.close()
-    await client.close()
-    await hass.async_block_till_done()
+    responses = []
+    response_class = web.WebSocketResponse
+
+    def response_factory(*args, **kwargs):
+        response = response_class(*args, **kwargs)
+        responses.append(response)
+        return response
+
+    # Own both ends of this rejected connection; aiohttp may leave a heartbeat
+    # handle after the server rejects authentication before ActiveConnection exists.
+    with patch(
+        "homeassistant.components.websocket_api.http.web.WebSocketResponse",
+        side_effect=response_factory,
+    ):
+        client = await aiohttp_client(hass.http.app)
+        socket = await client.ws_connect("/api/websocket")
+        try:
+            assert (await socket.receive_json())["type"] == "auth_required"
+            await socket.send_json({"type": "auth", "access_token": "invalid"})
+            assert (await socket.receive_json())["type"] == "auth_invalid"
+            await socket.receive()
+        finally:
+            await socket.close()
+            await client.close()
+            for response in responses:
+                await response.close()
+                response._cancel_heartbeat()
+            await hass.async_block_till_done()
