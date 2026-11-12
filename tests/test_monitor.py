@@ -242,3 +242,5 @@ async def test_unauthenticated_manual_cannot_execute(
     await socket.send_json({"type": "auth", "access_token": "invalid"})
     assert (await socket.receive_json())["type"] == "auth_invalid"
     await socket.close()
+    await client.close()
+    await hass.async_block_till_done()
