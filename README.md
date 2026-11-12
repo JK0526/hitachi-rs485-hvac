@@ -1,6 +1,6 @@
 # Hitachi RS485 HVAC
 
-獨立的 Home Assistant HACS 整合，透過透明 TCP ↔ RS485 閘道器控制日立 **RC-R02XT 空調**。初始版本 **0.1.0**；正式部署前請完成 [硬體驗收](docs/v0.1.0-acceptance.md)。本專案非日立官方產品。
+獨立的 Home Assistant HACS 整合，透過透明 TCP ↔ RS485 閘道器控制日立 **RC-R02XT 空調**。目前測試版本 **0.1.2rc1**；正式部署前請完成 [硬體驗收](docs/v0.1.0-acceptance.md)。本專案非日立官方產品。
 
 ## 架構與系統需求
 
@@ -83,7 +83,7 @@ Energy 使用 `ENERGY` / `TOTAL_INCREASING` / `kWh`，可在 HA **設定 → 儀
 | 慢速輪詢週期 | 30 秒 | 0 停用慢速讀取；非零至少 10 秒 |
 | 搜尋範圍 | 1–247 | 起點不得大於終點 |
 
-Fast 每台只送一筆 FC03 讀 `0x40` count 5。Slow 讀目標溫度和已支援的 optional registers。兩者共用同一排程與 socket；非零週期是「目標週期」，當整輪耗時超過設定，不會積壓新工作。大量 Slave 應提高輪詢週期。
+Fast 每台依序送兩筆 FC03：`0x0040` count 5（狀態）、`0x0023` count 1（設定溫度），完成後才讀下一台。Slow 僅讀已支援的 optional registers，不重複讀設定溫度。兩者共用同一排程與 socket；非零週期是「目標週期」，當整輪耗時超過設定，不會積壓新工作。大量 Slave 應提高輪詢週期。
 
 Fast=0 不會偷偷背景讀取，明確控制／讀回、明確刷新、搜尋、Monitor 與 TCP reconnect 仍能使用。單一 timeout 不立刻判離線；連續 3 次 fast read 失敗才標記 Slave 不可用。Gateway TCP loss 與 Slave timeout 分開處理。
 
@@ -145,3 +145,27 @@ node --test tests/frontend/monitor.test.cjs
 測試使用 Python 3.14、真實 HA 2026.10.1 test fixtures 與 loopback 模擬 Gateway，不連接現場設備。Coverage 包含全部整合 Python 檔案與 branches，CI 門檻 95%；沒有排除 core 模組。Node 原生 test runner 驗證 Monitor 操作與 decoder。CI 同時執行 lint、format、pytest、coverage 與前端測試。
 
 文件：[協定與能力矩陣](docs/protocol.md) · [架構](docs/architecture.md) · [驗收報告](docs/v0.1.0-acceptance.md)。完整規格與交付對照見驗收報告。MIT License。
+
+### Fast Poll 負載監測（0.1.2rc1 測試分支）
+
+Monitor 顯示設定 Fast 週期、最近一輪耗時與最近 20 輪完整 Fast Poll 平均耗時（包含所有 Slave 的狀態與設定溫度讀取）。負載 = 平均耗時 ÷ 設定週期 × 100%。
+
+- 未滿 20 輪：顯示樣本不足與目前平均負載，暫不判定警告。
+- < 80%：正常；80%～< 100%：注意；>= 100%：超過目標週期。
+- Fast=0 顯示停用，無設備或無完整樣本顯示無資料；執行時暫停顯示已暫停，不計算負載。
+- 警告僅顯示於 Monitor，不寫入持續性 HA Log／Notification，不自動變更週期。
+- 單獨 Target 讀取錯誤保留已確認的狀態及設定溫度，以既有 optional unavailable 與通訊統計呈現；GatewayError 仍沿用既有斷線恢復機制。
+- 保留單一 worker、1 秒 timeout、75 ms 最小 transaction turnaround、控制優先及 Scanner 獨占。
+- 超過目標週期仍完成目前輪詢，不並行、不累積工作；下一輪依原有「起始時間 + 週期」排程，不額外固定等待一個週期。
+
+現場測試使用 `feature/fast-target-poll` 公開分支，未發布正式 Release。HACS 官方的 [Update entities 文件](https://www.hacs.dev/docs/use/entities/update/) 支援以 `update.install` 指定公開分支；在 Home Assistant「開發者工具 → 動作」執行（請自行選取這個整合對應的 HACS update entity，勿選到 HACS 本身）：
+
+```yaml
+action: update.install
+target:
+  entity_id: update.REPLACE_WITH_HITACHI_HACS_UPDATE_ENTITY
+data:
+  version: feature/fast-target-poll
+```
+
+完成後重新啟動 Home Assistant，確認整合版本為 `0.1.2rc1`；Monitor 的模組網址也會使用新的版本號，避免舊前端快取。只推送分支不代表 HACS 預設更新來源會自動切換，日後測試更新請再次明確指定此分支。若所用 HACS 版本不支援指定分支，可由 GitHub 該分支下載並覆蓋 `custom_components/hitachi_rs485` 後重新啟動。

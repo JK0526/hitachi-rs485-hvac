@@ -44,3 +44,31 @@ The gateway reconnect scheduler uses bounded 1/2/4/8/15/30-second backoff, indep
 Unload cancels the poll loop and worker, cancels pending futures, cancels the sole reader and closes the stream. Options changes reload the entry. Reconfigure validates the new TCP endpoint before changing entry data and retains entry/device/entity IDs. Device removal prunes registry entries belonging to that slave only. Options use a private deep-copied draft and save only on final confirmation; cancellation never commits.
 
 Monitor list/subscribe/clear/poll commands all require admin privileges. Static frontend registration is once per integration domain, with versioned module URL. WebSocket subscription timers belong to the client subscription and survive entry reload by resolving the current runtime on each tick. The Monitor exposes no register write/energy reset. Diagnostics redact host addresses and include only protocol state/configuration needed for troubleshooting. Local network transport has no encryption or authentication; deploy on a trusted network.
+
+
+## Fast + Target test branch (0.1.2rc1)
+
+Baseline: tag `v0.1.1rc2`, commit `70ebad0f3d18707ebeb0585cdf4847430b8a8e93`.
+Branch: `feature/fast-target-poll`. At development start, origin/main
+(`26fc477`) did not contain the rc2 turnaround/receive fixes, so this branch
+deliberately starts from rc2.
+
+Each fast round sequentially reads FC03 0x0040 count 5 and FC03 0x0023 count 1
+for each slave before moving to the next. The target read uses the existing
+optional-read error path: timeout/protocol errors preserve confirmed values
+and fast health, while GatewayError retains the shared gateway recovery path.
+Slow rounds now read only supported optional registers.
+
+Only completed rounds covering all configured slaves enter the existing
+20-entry duration deque. Paused partial rounds, empty rounds, and aborted
+gateway-loss rounds do not bias load downward. Duration includes both reads,
+transport queue waiting and turnaround pacing. Monitor alone derives load from
+the average divided by the configured fast interval. Before 20 samples, it
+shows provisional load and insufficient samples without warnings. Disabled,
+empty, unsampled and runtime-paused polling have no load percentage. After
+20 samples, thresholds are <80% normal, >=80% high, and >=100% over target.
+These values never alter deadlines or emit log/notification warnings.
+
+Transport, scanner, classification, identification and climate state formats
+are unchanged. The existing scheduler remains serial and uses start + interval
+deadlines. No additional poll timer, worker, connection or write retry was added.

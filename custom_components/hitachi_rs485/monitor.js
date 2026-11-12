@@ -78,12 +78,14 @@ class HitachiRS485Monitor extends HTMLElement {
         <section class="card trace-panel"><h2>原始封包</h2><div id="trace" class="trace-list" aria-label="Modbus Raw HEX"></div></section>
         <aside id="sidebar" class="sidebar">
           <section class="card"><h2>閘道器</h2><dl class="metric-grid">
-            <dt>狀態</dt><dd id="gateway-status" aria-live="polite">等待資料</dd><dt>設定週期</dt><dd id="gateway-poll">—</dd>
+            <dt>狀態</dt><dd id="gateway-status" aria-live="polite">等待資料</dd><dt>設定 Fast 週期</dt><dd id="gateway-poll">—</dd>
             <dt>背景輪詢</dt><dd id="gateway-poll-state">等待資料</dd>
-            <dt>設備</dt><dd id="gateway-devices">—</dd><dt>最近輪詢</dt><dd id="gateway-last">—</dd>
-            <dt>平均輪詢</dt><dd id="gateway-average">—</dd><dt>佇列</dt><dd id="gateway-queue">—</dd>
+            <dt>設備</dt><dd id="gateway-devices">—</dd><dt>最近 Fast 輪詢</dt><dd id="gateway-last">—</dd>
+            <dt>平均 Fast（最近 20 輪）</dt><dd id="gateway-average">—</dd><dt>佇列</dt><dd id="gateway-queue">—</dd>
             <dt>佇列峰值</dt><dd id="gateway-queue-peak">—</dd>
-          </dl></section>
+            <dt>輪詢負載</dt><dd id="gateway-load">—</dd>
+            <dt>負載狀態</dt><dd id="gateway-load-state" aria-live="polite">等待資料</dd>
+          </dl><div id="gateway-load-warning" class="section-caption" role="status"></div></section>
           <section id="decoder-card" class="card decoder-card"><h2>封包解析</h2><dl id="decoder" class="decoder-grid"><dd class="empty">選取一筆封包以檢視內容。</dd></dl></section>
           <section class="card"><h2>設備狀態 <small id="device-summary">0 / 0 在線</small></h2><div id="devices" class="device-list"></div></section>
           <section class="card"><h2>通訊統計</h2><div id="stats-caption" class="section-caption">自本次啟動起累計</div><div id="stats-grid" class="stats-grid">
@@ -294,6 +296,15 @@ class HitachiRS485Monitor extends HTMLElement {
     this.shadowRoot.querySelector("#gateway-devices").textContent = `${coordinator.available_slaves ?? 0} / ${coordinator.configured_slaves ?? 0} 在線`;
     this.shadowRoot.querySelector("#gateway-last").textContent = `${Number(coordinator.last_poll_round_ms || 0).toFixed(1)} ms`;
     this.shadowRoot.querySelector("#gateway-average").textContent = `${Number(coordinator.average_poll_round_ms || 0).toFixed(1)} ms`;
+    const load = snapshot.poll_load || {};
+    const loadLabels = { disabled: "停用", no_data: "無資料", paused: "已暫停", insufficient_samples: "樣本不足", normal: "正常", high: "注意", over_target: "超過目標週期" };
+    this.shadowRoot.querySelector("#gateway-load").textContent = load.percent == null ? "—" : `${Number(load.percent).toFixed(1)}%`;
+    this.shadowRoot.querySelector("#gateway-load-state").textContent = loadLabels[load.state] || "無資料";
+    this.shadowRoot.querySelector("#gateway-load-warning").textContent = load.state === "high"
+      ? "注意：輪詢負載偏高，建議觀察通訊狀況。"
+      : load.state === "over_target"
+      ? "平均輪詢耗時已超過設定週期，實際更新速度可能降低。建議手動增加 Fast Poll 間隔。"
+      : load.state === "insufficient_samples" ? `已收集 ${load.samples || 0} / 20 輪，暫不判定負載警告。` : "";
     this.shadowRoot.querySelector("#gateway-queue").textContent = String(coordinator.queue_depth ?? 0);
     this.shadowRoot.querySelector("#gateway-queue-peak").textContent = String(coordinator.queue_peak ?? 0);
     this.shadowRoot.querySelector("#device-summary").textContent = `${coordinator.available_slaves ?? 0} / ${coordinator.configured_slaves ?? 0} 在線`;

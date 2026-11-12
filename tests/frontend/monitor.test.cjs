@@ -44,7 +44,7 @@ class Element {
 const selectors = [
   '#gateway', '#slave-filter', '#type-filter', '#clear', '#pause', '#poll-control', '#auto-scroll',
   '#error', '#trace', '#gateway-status', '#gateway-poll', '#gateway-poll-state', '#gateway-devices',
-  '#gateway-last', '#gateway-average', '#gateway-queue', '#gateway-queue-peak',
+  '#gateway-load', '#gateway-load-state', '#gateway-load-warning', '#gateway-last', '#gateway-average', '#gateway-queue', '#gateway-queue-peak',
   '#stat-success', '#stat-failed', '#stat-timeout', '#stat-crc', '#stat-reconnect', '#stat-exception',
   '#devices', '#device-summary', '#decoder', '#sidebar', '#decoder-card', '#stats-caption', '#stats-grid',
 ];
@@ -643,4 +643,23 @@ test('scan identity takes precedence and unknown series displays directly', () =
   const scans = [tx(7, '4E 4B'), tx(8, '20 20')];
   assert.equal(Constructor._deviceName(1, [{slave: 1, series: 'OLD'}], scans), 'Hitachi NK');
   assert.equal(Constructor._deviceName(1, [{slave: 1, series: 'ABC'}]), 'Hitachi ABC');
+});
+
+test('poll load states and warnings render separately from communication statistics', async () => {
+  const h = createHarness(); await h.flush();
+  for (const [state, percent, label, warning] of [
+    ['normal', 79.9, '正常', ''],
+    ['high', 80, '注意', '注意：輪詢負載偏高，建議觀察通訊狀況。'],
+    ['over_target', 100, '超過目標週期', '平均輪詢耗時已超過設定週期，實際更新速度可能降低。建議手動增加 Fast Poll 間隔。'],
+    ['insufficient_samples', 200, '樣本不足', '已收集 3 / 20 輪，暫不判定負載警告。'],
+    ['disabled', null, '停用', ''],
+    ['no_data', null, '無資料', ''],
+    ['paused', null, '已暫停', ''],
+  ]) {
+    h.subscriptions[0].callback({ ...snapshot(), poll_load: { state, percent, samples: 3 } });
+    assert.equal(h.panel.shadowRoot.querySelector('#gateway-load-state').textContent, label);
+    assert.equal(h.panel.shadowRoot.querySelector('#gateway-load-warning').textContent, warning);
+    assert.equal(h.panel.shadowRoot.querySelector('#gateway-load').textContent, percent == null ? '—' : percent.toFixed(1) + '%');
+  }
+  h.panel.disconnectedCallback();
 });

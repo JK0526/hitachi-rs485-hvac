@@ -48,7 +48,7 @@ async def test_gateway_failures_propagate_without_optimism(hass, gateway, device
         gateway.modes.clear()
         c.gateway_available = True
         gateway.modes[(1, 3, 35)] = "disconnect"
-        await c.async_poll_round(slow=True)
+        await c.async_poll_round()
         assert not c.gateway_available
         gateway.modes.clear()
         c.gateway_available = True
@@ -78,8 +78,11 @@ async def test_no_overlap_target_scheduling_and_slow_zero(hass, gateway, device)
         await other
         # Let one real target period elapse; no slow requests or task backlog.
         await asyncio.sleep(0.52)
-        assert 2 <= len(gateway.requests) <= 4
-        assert all(r[2:6] == bytes.fromhex("00400005") for r in gateway.requests)
+        assert 4 <= len(gateway.requests) <= 8
+        assert all(
+            r[2:6] in (bytes.fromhex("00400005"), bytes.fromhex("00230001"))
+            for r in gateway.requests
+        )
         assert c.transport.poll_depth <= 1
     finally:
         await hub.stop()
@@ -222,6 +225,7 @@ async def test_gateway_loss_wakeup_does_not_skip_backoff(hass, gateway, device):
     finally:
         await hub.stop()
 
+
 async def test_stream_resynchronizes_and_handles_exception(socket_enabled):
     async def handler(reader, writer):
         try:
@@ -241,7 +245,9 @@ async def test_stream_resynchronizes_and_handles_exception(socket_enabled):
     server = await asyncio.start_server(handler, "127.0.0.1", 0)
     t = Transport("127.0.0.1", server.sockets[0].getsockname()[1], timeout=1)
     try:
-        assert await t.submit(read_holding_registers(1, 0, 1)) == bytes.fromhex("010302001bf84f")
+        assert await t.submit(read_holding_registers(1, 0, 1)) == bytes.fromhex(
+            "010302001bf84f"
+        )
         with pytest.raises(DeviceException) as error:
             await t.submit(read_holding_registers(1, 4, 1))
         assert error.value.code == 3
