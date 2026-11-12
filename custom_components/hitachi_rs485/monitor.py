@@ -1,4 +1,4 @@
-"""Trace console with admin-only, runtime background polling controls."""
+"""Authenticated monitor and manual requests; administrative poll controls."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
 
 from .const import DOMAIN, VERSION
+from .manual import manual_request
+from .protocol import ProtocolError
+from .transport import GatewayError, OfflineError
 
 
 def _hub(hass: HomeAssistant, entry_id: str) -> Any:
@@ -102,7 +105,6 @@ def _empty_snapshot() -> dict[str, Any]:
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/monitor/list"})
-@websocket_api.require_admin
 @callback
 def websocket_list(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
@@ -120,7 +122,6 @@ def websocket_list(
 @websocket_api.websocket_command(
     {vol.Required("type"): f"{DOMAIN}/monitor/subscribe", vol.Required("entry_id"): str}
 )
-@websocket_api.require_admin
 @callback
 def websocket_subscribe(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
@@ -203,10 +204,44 @@ def websocket_poll(
     )
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/monitor/manual",
+        vol.Required("entry_id"): str,
+        vol.Required("hex"): str,
+        vol.Required("auto_crc"): vol.Boolean(),
+        vol.Optional("confirmed", default=False): vol.Boolean(),
+    }
+)
+@websocket_api.async_response
+async def websocket_manual(hass, connection, msg) -> None:
+    """WebSocket authentication is enforced by HA; writes require confirmation."""
+    hub = _hub(hass, msg["entry_id"])
+    if hub is None:
+        connection.send_error(msg["id"], "not_loaded", "Gateway not loaded")
+        return
+    c = hub.coordinator
+    if c.scanning or not c.gateway_available:
+        connection.send_error(
+            msg["id"], "unavailable", "Scanner owns bus or gateway offline"
+        )
+        return
+    try:
+        request = manual_request(msg["hex"], msg["auto_crc"], c, msg["confirmed"])
+        response = await hub.transport.submit_manual(request)
+    except TimeoutError:
+        connection.send_error(msg["id"], "timeout", "Manual request timed out")
+    except (ProtocolError, ValueError, GatewayError, OfflineError) as error:
+        connection.send_error(msg["id"], "manual_failed", str(error))
+    else:
+        connection.send_result(msg["id"], {"response": response.hex(" ").upper()})
+
+
 async def async_register_monitor(hass: HomeAssistant) -> None:
     for handler in (
         websocket_list,
         websocket_subscribe,
+        websocket_manual,
         websocket_clear,
         websocket_poll,
     ):
@@ -227,5 +262,5 @@ async def async_register_monitor(hass: HomeAssistant) -> None:
         sidebar_title="Hitachi RS485 Monitor",
         sidebar_icon="mdi:console-line",
         module_url=f"/{DOMAIN}/monitor-{VERSION}.js",
-        require_admin=True,
+        require_admin=False,
     )

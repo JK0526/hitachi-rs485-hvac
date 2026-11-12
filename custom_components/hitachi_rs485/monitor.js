@@ -46,6 +46,7 @@ class HitachiRS485Monitor extends HTMLElement {
         header{display:flex;align-items:center;gap:12px;flex:0 0 auto;margin-bottom:10px}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto;margin-bottom:9px}
         button,select{font:inherit;min-height:36px;padding:7px 9px;border:1px solid var(--divider-color);border-radius:6px;color:var(--primary-text-color);background:var(--card-background-color)}
         button{cursor:pointer}.toolbar label{display:flex;align-items:center;gap:5px}.toolbar input{accent-color:var(--primary-color)}
+        .manual-panel{margin-bottom:10px;flex:none}.manual-fields{display:grid;gap:8px}.manual-fields textarea{width:100%;min-height:60px}#manual-preview{font-family:monospace;overflow-wrap:anywhere}
         #error{color:var(--error-color);margin:0 0 8px;flex:0 0 auto}
         .layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,380px);grid-template-areas:"trace sidebar";gap:14px;flex:1;min-height:0;overflow:hidden}
         .card{min-width:0;padding:12px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color)}
@@ -73,6 +74,15 @@ class HitachiRS485Monitor extends HTMLElement {
         <button id="poll-control" disabled>輪詢狀態載入中</button>
         <label><input id="auto-scroll" type="checkbox" checked>自動捲動</label>
       </div>
+      <details class="manual-panel"><summary id="manual-title">手動指令</summary>
+        <div class="manual-fields">
+        <textarea id="manual-hex" maxlength="1024" aria-label="RTU HEX"></textarea>
+        <label><input id="manual-crc" type="checkbox" checked><span id="manual-crc-label">自動附加 CRC16</span></label>
+        <output id="manual-preview"></output>
+        <div class="manual-actions"><button id="manual-send" disabled>發送</button>
+          <small id="manual-warning">寫入會直接影響設備。</small></div>
+        </div>
+      <output id="manual-result" role="status"></output></details>
       <div id="error" role="alert"></div>
       <div class="layout">
         <section class="card trace-panel"><h2>原始封包</h2><div id="trace" class="trace-list" aria-label="Modbus Raw HEX"></div></section>
@@ -96,6 +106,10 @@ class HitachiRS485Monitor extends HTMLElement {
           </div></section>
         </aside>
       </div>`;
+      this.shadowRoot.querySelector("#manual-hex").oninput = () => this._renderManual();
+      this.shadowRoot.querySelector("#manual-crc").onchange = () => this._renderManual();
+      this.shadowRoot.querySelector("#manual-send").onclick = () => this._sendManual();
+      this._renderManual();
       this.shadowRoot.querySelector("#gateway").onchange = (event) => this._select(event.target.value);
       this.shadowRoot.querySelector("#slave-filter").onchange = () => this._filterChanged();
       this.shadowRoot.querySelector("#type-filter").onchange = () => this._filterChanged();
@@ -236,6 +250,7 @@ class HitachiRS485Monitor extends HTMLElement {
   }
 
   async _togglePolling() {
+    this._renderManual();
     const snapshot = this._latest;
     const entry = this._entry;
     const generation = this._generation;
@@ -262,8 +277,54 @@ class HitachiRS485Monitor extends HTMLElement {
     }
   }
 
+  _renderManual() {
+    const get = (id) => this.shadowRoot.querySelector(id);
+    const zh = (this._hass?.locale?.language || this._hass?.language || "zh").toLowerCase().startsWith("zh");
+    get("#manual-title").textContent = zh ? "手動指令" : "Manual command";
+    get("#manual-crc-label").textContent = zh ? "自動附加 CRC16" : "Append CRC16";
+    get("#manual-send").textContent = zh ? "發送" : "Send";
+    get("#manual-warning").textContent = zh ? "寫入會直接影響設備。" : "Writes directly affect devices.";
+    const input = (get("#manual-hex").value || "").trim();
+    const valid = /^(?:[a-f0-9]{2}\s*)+$/i.test(input);
+    const bytes = valid ? input.match(/[a-f0-9]{2}/gi).map((pair) => parseInt(pair, 16)) : [];
+    if (bytes.length && get("#manual-crc").checked) {
+      let crc = 0xffff;
+      for (const byte of bytes) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xa001 : 0);
+      }
+      bytes.push(crc & 255, crc >>> 8);
+    }
+    get("#manual-preview").textContent = bytes.map((byte) => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+    get("#manual-send").disabled = !valid || !this._latest?.connected || Boolean(this._manualPending);
+  }
+
+  async _sendManual() {
+    const get = (id) => this.shadowRoot.querySelector(id);
+    if (get("#manual-send").disabled || this._manualPending) return;
+    const packet = get("#manual-preview").textContent.split(/\s+/).map((x) => parseInt(x,16));
+    const writing = packet[1] === 6 || packet[1] === 16;
+    if (writing && !window.confirm("寫入會直接影響設備，確定發送？")) return;
+    const generation = this._generation;
+    this._manualPending = true;
+    this._renderManual();
+    try {
+      await this._hass.callWS({
+        type: "hitachi_rs485/monitor/manual", entry_id: this._entry,
+        hex: get("#manual-hex").value, auto_crc: get("#manual-crc").checked, confirmed: writing,
+      });
+      if (generation === this._generation) get("#manual-result").textContent = "發送成功";
+    } catch (error) {
+      if (generation === this._generation) get("#manual-result").textContent = error.message || String(error);
+    } finally {
+      this._manualPending = false;
+      if (this.isConnected) this._renderManual();
+    }
+  }
+
   _renderPollControl(snapshot) {
     const button = this.shadowRoot.querySelector("#poll-control");
+    this.shadowRoot.querySelector("#clear").disabled = this._hass?.user?.is_admin === false;
     const state = this.shadowRoot.querySelector("#gateway-poll-state");
     if (!snapshot || snapshot.poll_interval == null) {
       button.textContent = "輪詢狀態載入中";
@@ -279,7 +340,8 @@ class HitachiRS485Monitor extends HTMLElement {
     }
     const paused = Boolean(snapshot.runtime_poll_paused);
     button.textContent = paused ? "恢復輪詢" : "暫停輪詢";
-    button.disabled = Boolean(this._pollControlPending);
+    button.disabled = Boolean(this._pollControlPending) || this._hass?.user?.is_admin === false;
+    this.shadowRoot.querySelector("#clear").disabled = this._hass?.user?.is_admin === false;
     state.textContent = paused ? "已暫停" : "執行中";
   }
 
@@ -394,7 +456,7 @@ class HitachiRS485Monitor extends HTMLElement {
           this._scrollDecoderIntoViewIfNeeded();
         };
         const timestamp = document.createElement("span"); timestamp.className = "trace-time"; timestamp.textContent = time;
-        const direction = document.createElement("span"); direction.className = `trace-status trace-${classKey}`; direction.textContent = status.padEnd(9);
+        const direction = document.createElement("span"); direction.className = `trace-status trace-${classKey}`; direction.textContent = (entry.source === "MANUAL" ? "MANUAL " : "") + status.padEnd(9);
         const raw = document.createElement("span"); raw.className = `trace-raw${["TX", "RX", "EVENT"].includes(status) ? ` trace-raw-${status.toLowerCase()}` : ""}`; raw.textContent = entry.raw_hex || "";
         row.append(timestamp, direction, raw);
         if (entry.latency_ms != null) { const latency = document.createElement("span"); latency.className = "trace-latency"; latency.textContent = `${Number(entry.latency_ms).toFixed(1)} ms`; row.append(latency); }

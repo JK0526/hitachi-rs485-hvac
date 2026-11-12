@@ -136,6 +136,12 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
             state.raw.update(raw)
             state.optional_unavailable.discard(spec.start)
 
+    async def _target_read(self, device: Device, fresh: bool) -> None:
+        # Only a successful read in this transaction sequence can justify skipping.
+        if fresh and self.states[device.slave].raw.get(Register.MODE_STATE) == 2:
+            return
+        await self._optional_read(device, TARGET)
+
     async def async_poll_round(
         self, *, slow: bool = False, background: bool = False
     ) -> None:
@@ -158,11 +164,12 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
                                 break
                             await self._optional_read(device, spec)
                     else:
-                        successes += await self.async_readback(device)
+                        fresh = await self.async_readback(device)
+                        successes += fresh
                         if background and self.background_polling_paused:
                             break
                         # Target errors preserve the independently confirmed fast state.
-                        await self._optional_read(device, TARGET)
+                        await self._target_read(device, fresh)
                         completed += 1
             except GatewayError:
                 return
@@ -193,8 +200,8 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
             if result is None:
                 return
             # A readback error preserves all previously confirmed values.
-            await self.async_readback(device)
-            await self._optional_read(device, TARGET)
+            fresh = await self.async_readback(device)
+            await self._target_read(device, fresh)
             self.async_set_updated_data(self.states)
         except GatewayError:
             self.gateway_lost()

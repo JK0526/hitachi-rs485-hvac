@@ -43,7 +43,7 @@ The gateway reconnect scheduler uses bounded 1/2/4/8/15/30-second backoff, indep
 
 Unload cancels the poll loop and worker, cancels pending futures, cancels the sole reader and closes the stream. Options changes reload the entry. Reconfigure validates the new TCP endpoint before changing entry data and retains entry/device/entity IDs. Device removal prunes registry entries belonging to that slave only. Options use a private deep-copied draft and save only on final confirmation; cancellation never commits.
 
-Monitor list/subscribe/clear/poll commands all require admin privileges. Static frontend registration is once per integration domain, with versioned module URL. WebSocket subscription timers belong to the client subscription and survive entry reload by resolving the current runtime on each tick. The Monitor exposes no register write/energy reset. Diagnostics redact host addresses and include only protocol state/configuration needed for troubleshooting. Local network transport has no encryption or authentication; deploy on a trusted network.
+Monitor list/subscribe/manual commands require an authenticated HA user; clear/poll remain admin-only. Static frontend registration is once per integration domain, with versioned module URL. WebSocket subscription timers belong to the client subscription and survive entry reload by resolving the current runtime on each tick. Manual writes are restricted to documented configured-device controls with explicit confirmation; energy reset remains prohibited. Diagnostics redact host addresses and include only protocol state/configuration needed for troubleshooting. Local network transport has no encryption or authentication; deploy on a trusted network.
 
 
 ## Fast + Target polling (0.1.2rc2)

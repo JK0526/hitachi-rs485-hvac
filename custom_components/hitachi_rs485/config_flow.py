@@ -100,16 +100,24 @@ class DiscoveryFlow:
         self._progress = {"current": "0", "total": "247", "found": "0"}
 
     def _scan_progress(self, current: int, total: int, found: int) -> None:
-        self._progress = {
-            "current": str(current),
-            "total": str(total),
-            "found": str(found),
-        }
-        self.async_update_progress(current / total)
+        self._progress.update(
+            {
+                "current": str(current),
+                "total": str(total),
+                "found": str(found),
+                "slave": str(self._draft["scan_start"] + max(0, current - 1)),
+            }
+        )
+        # HA clears the numeric progress when receiving the refresh event.
+        # Refresh text first, then restore the current percentage in event order.
         self.async_notify_flow_changed()
+        self.async_update_progress(current / total)
 
     async def _run_scan(self) -> list[ScanResult]:
         await asyncio.sleep(0)
+        self._scan_progress(
+            0, self._draft["scan_end"] - self._draft["scan_start"] + 1, 0
+        )
         args = self._draft["scan_start"], self._draft["scan_end"], self._scan_progress
         if isinstance(self, HitachiOptionsFlow):
             if not hasattr(self.config_entry, "runtime_data"):
@@ -150,6 +158,12 @@ class DiscoveryFlow:
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if self._scan_task is None:
+            self._progress.update(
+                current="0",
+                total=str(self._draft["scan_end"] - self._draft["scan_start"] + 1),
+                found="0",
+                slave=str(self._draft["scan_start"]),
+            )
             self._scan_task = self.hass.async_create_task(
                 self._run_scan(), "hitachi-scan"
             )
@@ -162,7 +176,7 @@ class DiscoveryFlow:
             )
         try:
             self._found = {r.slave: r for r in self._scan_task.result()}
-        except GatewayError:
+        except Exception:
             next_step = "scan_failed"
         else:
             if isinstance(self, HitachiOptionsFlow):
@@ -301,6 +315,10 @@ class DiscoveryFlow:
     async def async_step_cancel(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
+        if self._scan_task is not None:
+            self._scan_task.cancel()
+            await asyncio.gather(self._scan_task, return_exceptions=True)
+            self._scan_task = None
         return self.async_abort(reason="cancelled")
 
 

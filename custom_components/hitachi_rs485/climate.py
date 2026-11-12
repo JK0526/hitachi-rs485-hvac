@@ -79,7 +79,10 @@ class HitachiClimate(HitachiEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
-        if Register.TARGET in self.confirmed_state.optional_unavailable:
+        if (
+            self.confirmed_state.raw.get(Register.MODE_STATE) == 2
+            or Register.TARGET in self.confirmed_state.optional_unavailable
+        ):
             return None
         return self.confirmed_state.raw.get(Register.TARGET)
 

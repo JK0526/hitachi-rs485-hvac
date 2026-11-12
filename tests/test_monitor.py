@@ -14,11 +14,18 @@ from custom_components.hitachi_rs485.monitor import (
     async_register_monitor,
     websocket_clear,
     websocket_list,
+    websocket_manual,
     websocket_poll,
     websocket_subscribe,
 )
 
-HANDLERS = (websocket_list, websocket_subscribe, websocket_clear, websocket_poll)
+HANDLERS = (
+    websocket_list,
+    websocket_subscribe,
+    websocket_clear,
+    websocket_poll,
+    websocket_manual,
+)
 
 
 @pytest.fixture
@@ -88,7 +95,7 @@ async def test_missing(ws, command):
     assert (await ws.receive_json())["error"]["code"] == "not_loaded"
 
 
-@pytest.mark.parametrize("command", ["list", "subscribe", "clear", "poll"])
+@pytest.mark.parametrize("command", ["clear", "poll"])
 async def test_admin(hass, hass_ws_client, hass_read_only_access_token, command):
     assert await async_setup_component(hass, "websocket_api", {})
     for h in HANDLERS:
@@ -144,9 +151,9 @@ async def test_register_panel(hass):
         "custom_components.hitachi_rs485.monitor.websocket_api.async_register_command"
     ) as register:
         await async_register_monitor(hass)
-    assert register.call_count == 4
+    assert register.call_count == 5
     panel = hass.data[DATA_PANELS]["hitachi-rs485-monitor"]
-    assert panel.require_admin
+    assert not panel.require_admin
     assert (
         panel.config["_panel_custom"]["module_url"] == f"/{DOMAIN}/monitor-{VERSION}.js"
     )
@@ -161,3 +168,77 @@ async def test_setup_registers(hass):
     ) as register:
         assert await async_setup(hass, {})
         register.assert_awaited_once_with(hass)
+
+
+@pytest.mark.parametrize("admin", [True, False])
+async def test_authenticated_manual_access(
+    hass, hass_ws_client, hass_read_only_access_token, entry, monitored, admin
+):
+    assert await async_setup_component(hass, "websocket_api", {})
+    for handler in HANDLERS:
+        websocket_api.async_register_command(hass, handler)
+    client = await hass_ws_client(
+        hass, **({} if admin else {"access_token": hass_read_only_access_token})
+    )
+    try:
+        await client.send_json({"id": 1, "type": f"{DOMAIN}/monitor/list"})
+        assert (await client.receive_json())["success"]
+        with patch.object(
+            monitored.transport,
+            "submit_manual",
+            new=AsyncMock(return_value=b"response"),
+        ) as submit:
+            await client.send_json(
+                {
+                    "id": 2,
+                    "type": f"{DOMAIN}/monitor/manual",
+                    "entry_id": entry.entry_id,
+                    "hex": "01 03 00 23 00 01",
+                    "auto_crc": True,
+                }
+            )
+            assert (await client.receive_json())["success"]
+            submit.assert_awaited_once()
+    finally:
+        await client.close()
+
+
+@pytest.mark.parametrize(
+    "condition,code",
+    [
+        ("missing", "not_loaded"),
+        ("scan", "unavailable"),
+        ("invalid", "manual_failed"),
+        ("timeout", "timeout"),
+        ("error", "manual_failed"),
+    ],
+)
+async def test_manual_ws_failures(ws, monitored, entry, condition, code):
+    monitored.coordinator.scanning = condition == "scan"
+    error = TimeoutError() if condition == "timeout" else ValueError("bad")
+    with patch.object(
+        monitored.transport, "submit_manual", new=AsyncMock(side_effect=error)
+    ):
+        await ws.send_json(
+            {
+                "id": 1,
+                "type": f"{DOMAIN}/monitor/manual",
+                "entry_id": "missing" if condition == "missing" else entry.entry_id,
+                "hex": "bad" if condition == "invalid" else "01 03 00 23 00 01",
+                "auto_crc": True,
+            }
+        )
+        assert (await ws.receive_json())["error"]["code"] == code
+
+
+async def test_unauthenticated_manual_cannot_execute(
+    hass, aiohttp_client, socket_enabled
+):
+    assert await async_setup_component(hass, "websocket_api", {})
+    websocket_api.async_register_command(hass, websocket_manual)
+    client = await aiohttp_client(hass.http.app)
+    socket = await client.ws_connect("/api/websocket")
+    assert (await socket.receive_json())["type"] == "auth_required"
+    await socket.send_json({"type": "auth", "access_token": "invalid"})
+    assert (await socket.receive_json())["type"] == "auth_invalid"
+    await socket.close()

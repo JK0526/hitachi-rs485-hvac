@@ -302,6 +302,28 @@ class Transport:
                 future = self._enqueue(request, poll, key, source)
         return await future
 
+    async def submit_manual(self, request: bytes) -> bytes | None:
+        """Isolate a one-shot request; cancelled callers cannot release the bus early."""
+        active = getattr(self, "_manual_task", None)
+        if (active is not None and not active.done()) or self._gate.locked():
+            raise OfflineError("Bus is reserved or a manual request is pending")
+        if self._closed or not self.connected:
+            raise OfflineError("Gateway offline")
+
+        writer = self._writer
+
+        async def transaction():
+            async with self.exclusive():
+                if self._closed or not self.connected or self._writer is not writer:
+                    raise OfflineError("Gateway disconnected while draining")
+                return await self._enqueue(request, True, None, "MANUAL")
+
+        self._manual_task = asyncio.create_task(transaction())
+        self._manual_task.add_done_callback(
+            lambda task: task.exception() if not task.cancelled() else None
+        )
+        return await asyncio.shield(self._manual_task)
+
     def _enqueue(
         self,
         request: bytes,

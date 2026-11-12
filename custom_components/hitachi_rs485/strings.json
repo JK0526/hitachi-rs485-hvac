@@ -21,7 +21,7 @@
       },
       "scan": {
         "title": "Searching",
-        "description": "Scanned {current} / {total}; found {found}."
+        "description": "Current slave {slave}; scanned {current} / {total}; found {found} devices."
       },
       "select": {
         "title": "Found devices",
@@ -85,7 +85,7 @@
       },
       "scan": {
         "title": "Searching",
-        "description": "Scanned {current} / {total}; found {found}."
+        "description": "Current slave {slave}; scanned {current} / {total}; found {found} devices."
       },
       "select": {
         "title": "Found devices",
@@ -190,6 +190,9 @@
       },
       "filter_runtime": {
         "name": "Filter runtime"
+      },
+      "indoor_temperature": {
+        "name": "Indoor temperature"
       }
     },
     "binary_sensor": {

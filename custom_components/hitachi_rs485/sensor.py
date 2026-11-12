@@ -37,6 +37,14 @@ class HitachiSensorDescription(SensorEntityDescription):
 
 SENSORS = (
     HitachiSensorDescription(
+        key="indoor_temperature",
+        translation_key="indoor_temperature",
+        register=Register.INDOOR_TEMPERATURE,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+    ),
+    HitachiSensorDescription(
         key="energy",
         translation_key="energy",
         register=Register.ENERGY,
@@ -100,7 +108,8 @@ async def async_setup_entry(
         HitachiSensor(entry, d, desc)
         for d in entry.runtime_data.coordinator.devices
         for desc in SENSORS
-        if desc.key == "error_code" or desc.key in d.capabilities
+        if desc.key in ("error_code", "indoor_temperature")
+        or desc.key in d.capabilities
     )
 
 

@@ -42,7 +42,7 @@ class Element {
 }
 
 const selectors = [
-  '#gateway', '#slave-filter', '#type-filter', '#clear', '#pause', '#poll-control', '#auto-scroll',
+  '#manual-hex', '#manual-crc', '#manual-send', '#manual-title', '#manual-preview', '#manual-warning', '#manual-crc-label', '#manual-result', '#gateway', '#slave-filter', '#type-filter', '#clear', '#pause', '#poll-control', '#auto-scroll',
   '#error', '#trace', '#gateway-status', '#gateway-poll', '#gateway-poll-state', '#gateway-devices',
   '#gateway-load', '#gateway-load-state', '#gateway-load-warning', '#gateway-last', '#gateway-average', '#gateway-queue', '#gateway-queue-peak',
   '#stat-success', '#stat-failed', '#stat-timeout', '#stat-crc', '#stat-reconnect', '#stat-exception',
@@ -58,7 +58,7 @@ function createHarness(gateways = [{ entry_id: 'one', title: 'Gateway <script>' 
   const context = vm.createContext({
     HTMLElement: class { attachShadow() { this.shadowRoot = new Shadow(); } },
     customElements: { define(name, cls) { assert.equal(name, 'hitachi-rs485-monitor'); Constructor = cls; } },
-    document: { createElement(tag) { return new Element(tag); } }, Date, String,
+    document: { createElement(tag) { return new Element(tag); } }, Date, String, window: { confirm: () => true },
   });
   vm.runInContext(monitorSource, context);
   const calls = [], subscriptions = [];
@@ -661,5 +661,44 @@ test('poll load states and warnings render separately from communication statist
     assert.equal(h.panel.shadowRoot.querySelector('#gateway-load-warning').textContent, warning);
     assert.equal(h.panel.shadowRoot.querySelector('#gateway-load').textContent, percent == null ? '—' : percent.toFixed(1) + '%');
   }
+  h.panel.disconnectedCallback();
+});
+
+test('manual HEX preview, send result and duplicate prevention', async () => {
+  const h=createHarness(); await h.flush();
+  h.subscriptions[0].callback(snapshot());
+  const get=(id)=>h.panel.shadowRoot.querySelector(id);
+  get('#manual-crc').checked=true;
+  get('#manual-hex').value='09 03 00 23 00 01';
+  get('#manual-hex').oninput();
+  assert.match(get('#manual-preview').textContent,/^09 03 00 23 00 01 [0-9A-F]{2} [0-9A-F]{2}$/);
+  let finish;
+  h.hass.callWS=(request)=>{h.calls.push(request);return new Promise(resolve=>{finish=resolve;});};
+  const sending=h.panel._sendManual();
+  assert.equal(get('#manual-send').disabled,true);
+  await h.panel._sendManual();
+  assert.equal(h.calls.filter(x=>x.type.endsWith('/manual')).length,1);
+  finish(); await sending;
+  assert.equal(get('#manual-result').textContent,'發送成功');
+  h.hass.callWS=async()=>{throw new Error('timeout');};
+  await h.panel._sendManual();
+  assert.equal(get('#manual-result').textContent,'timeout');
+  get('#manual-hex').value='zz';get('#manual-hex').oninput();
+  assert.equal(get('#manual-send').disabled,true);
+  h.panel.disconnectedCallback();
+});
+
+test('non-admin can send manual while administrative controls stay disabled', async()=>{
+  const h=createHarness(); await h.flush();
+  h.hass.user={is_admin:false};
+  h.subscriptions[0].callback(snapshot());
+  const get=id=>h.panel.shadowRoot.querySelector(id);
+  assert.equal(get('#poll-control').disabled,true);
+  assert.equal(get('#clear').disabled,true);
+  get('#manual-hex').value='01 06 00 20 00 01';get('#manual-crc').checked=true;get('#manual-hex').oninput();
+  await h.panel._sendManual();
+  assert.equal(h.calls.at(-1).confirmed,true);
+  h.subscriptions[0].callback(snapshot([entry('TX','01 06 00 20 00 01',null,'MANUAL')]));
+  assert.match(get('#trace').textContent,/MANUAL/);
   h.panel.disconnectedCallback();
 });

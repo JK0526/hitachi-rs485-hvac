@@ -2,7 +2,7 @@
 
 ![Hitachi RS485 HVAC integration icon](custom_components/hitachi_rs485/brand/icon.png)
 
-獨立的 Home Assistant HACS 整合，透過透明 TCP ↔ RS485 閘道器控制日立 **RC-R02XT 空調**。目前測試版本 **0.1.2rc2**；正式部署前請完成 [硬體驗收](docs/v0.1.0-acceptance.md)。本專案非日立官方產品。
+獨立的 Home Assistant HACS 整合，透過透明 TCP ↔ RS485 閘道器控制日立 **RC-R02XT 空調**。目前測試版本 **0.1.3rc1**；正式部署前請完成 [硬體驗收](docs/v0.1.0-acceptance.md)。本專案非日立官方產品。
 
 ## 架構與系統需求
 
@@ -66,6 +66,7 @@ RC-R02XT 搭配官方型式碼 1–6 的空調（RAD、RAS、RA、CRD、CRS、RP
 | Entity | 預設 | 說明 |
 |---|---|---|
 | Climate | 啟用 | 每個支援的 Slave 一個 |
+| 室內溫度 | 啟用 | 與 Climate 共用 `0x43` confirmed state，不增加輪詢 |
 | 累積用電量 | 能力探測成功才建立 | `0x38 / 10` kWh |
 | 室外溫度 | 能力探測成功才建立 | `0x0A` °C，官方 unsigned 編碼 |
 | 運轉電流 | 診斷、預設停用 | `0x0F / 10` A |
@@ -102,7 +103,7 @@ Host / Port 使用整合選單的 **Reconfigure／重新設定**，不放在 Opt
 
 ## Monitor
 
-側邊欄 **Hitachi RS485 Monitor** 僅管理員可見。可選 Gateway、Slave、封包類型；顯示 raw TX/RX HEX、timeout、CRC error、Modbus exception、延遲、Device Health、通訊統計及佇列深度。
+側邊欄 **Hitachi RS485 Monitor** 所有已登入使用者可見。可選 Gateway、Slave、封包類型；顯示 raw TX/RX HEX、timeout、CRC error、Modbus exception、延遲、Device Health、通訊統計及佇列深度。
 
 - **暫停畫面**：停止 UI 更新，仍收集有界歷史；不停止通訊。
 - **暫停輪詢**：只暫停該 Gateway 背景輪詢，允許正在處理的 request 結束；明確控制／搜尋／重連不受影響。
@@ -110,7 +111,7 @@ Host / Port 使用整合選單的 **Reconfigure／重新設定**，不放在 Opt
 - **自動捲動**：可關閉以查看舊資料。
 - 點封包：解析 FC03、FC06、FC10，對應 climate state、energy 等 register；未知資料顯示 Raw Modbus。
 
-後端保留 200 筆 Trace；前端本機最多 1000 筆。Monitor 沒有任意 register read/write 控制，不提供 Energy reset。
+後端保留 200 筆 Trace；前端本機最多 1000 筆。手動指令可讀取合法範圍；寫入僅開放已配置設備的原廠控制暫存器，不提供 Energy reset。
 
 ## 多 Gateway
 
@@ -148,7 +149,7 @@ node --test tests/frontend/monitor.test.cjs
 
 文件：[協定與能力矩陣](docs/protocol.md) · [架構](docs/architecture.md) · [驗收報告](docs/v0.1.0-acceptance.md)。完整規格與交付對照見驗收報告。MIT License。
 
-### Fast Poll 負載監測（0.1.2rc2 測試版）
+### Fast Poll 負載監測（0.1.3rc1 測試版）
 
 Monitor 顯示設定 Fast 週期、最近一輪耗時與最近 20 輪完整 Fast Poll 平均耗時（包含所有 Slave 的狀態與設定溫度讀取）。負載 = 平均耗時 ÷ 設定週期 × 100%。
 
@@ -160,4 +161,14 @@ Monitor 顯示設定 Fast 週期、最近一輪耗時與最近 20 輪完整 Fast
 - 保留單一 worker、1 秒 timeout、75 ms 最小 transaction turnaround、控制優先及 Scanner 獨占。
 - 超過目標週期仍完成目前輪詢，不並行、不累積工作；下一輪依原有「起始時間 + 週期」排程，不額外固定等待一個週期。
 
-本整合隱藏預設分支版本，HACS 版本選單提供已發布的 Tag／Release。測試版本需啟用 Beta 版本顯示，選擇 `v0.1.2rc2`；現場驗收通過後再選擇正式版。安裝後重新啟動 Home Assistant。Monitor 前端靜態資源網址會隨整合版本更新。
+本整合隱藏預設分支版本，HACS 版本選單提供已發布的 Tag／Release。測試版本需啟用 Beta 版本顯示，選擇 `v0.1.3rc1`；現場驗收通過後再選擇正式版。安裝後重新啟動 Home Assistant。Monitor 前端靜態資源網址會隨整合版本更新。
+
+## 0.1.3rc1 手動指令與送風模式
+
+Monitor 的「手動指令」可輸入原始 HEX，預設自動附加 CRC16 並預覽完整 TX。取消自動 CRC 時必須提供正確 CRC。支援 FC03、FC06、FC10；寫入需要確認，後端再次依既有 Hitachi 控制暫存器、值域與設備能力驗證。禁止 Broadcast、未知／保留暫存器及重置寫入。交易使用原有 Socket／Worker，Trace 標示 MANUAL；不重試寫入、不直接改 Climate confirmed state。
+
+已登入的一般使用者可進入 Monitor 並送出手動指令；未登入請求由 Home Assistant 拒絕。清除紀錄與暫停輪詢仍需要管理員。手動交易會等待先前工作完成並獨占交易；發送中拒絕重複手動命令，取消等待也會先完成在途交易的清理。
+
+Fast 讀取成功確認 FAN_ONLY（MODE_STATE=2）時略過 Target，Climate 設定溫度顯示無資料，保留最後確認快取。其他模式或 Fast 讀取失敗時仍嘗試 Target；真正的 Exception 仍會記錄。控制後讀回採相同規則。
+
+搜尋沿用原生 HA Progress Flow；先刷新目前 Slave、掃描數與找到設備的原生描述，再更新百分比，避免 refresh 清空已顯示的進度。

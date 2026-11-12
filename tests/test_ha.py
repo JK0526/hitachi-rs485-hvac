@@ -119,20 +119,23 @@ async def test_entities_confirmed_and_metadata(hass, entry, device, gateway, hub
     c.states[1].raw.clear()
     assert sensors["current"].native_value is None and not sensors["current"].available
     assert problem.is_on is None
-    for setup, count in ((setup_climate, 1), (setup_sensors, 6), (setup_problem, 1)):
+    for setup, count in ((setup_climate, 1), (setup_sensors, 7), (setup_problem, 1)):
         added = []
         await setup(hass, entry, lambda es: added.extend(es))
         assert len(added) == count
     hub.coordinator.devices = (Device(1),)
     added = []
     await setup_sensors(hass, entry, lambda es: added.extend(es))
-    assert [e.entity_description.key for e in added] == ["error_code"]
+    assert [e.entity_description.key for e in added] == [
+        "indoor_temperature",
+        "error_code",
+    ]
 
 
 async def test_diagnostics(hass, entry, hub, device):
     hub.coordinator.states[1].available = True
     result = await async_get_config_entry_diagnostics(hass, entry)
-    assert result["integration"]["version"] == "0.1.2rc2"
+    assert result["integration"]["version"] == "0.1.3rc1"
     assert result["gateway"]["host"] == "**REDACTED**"
     assert "127.0.0.1" not in str(result)
     assert result["devices"][0]["capabilities"] == list(device.capabilities)

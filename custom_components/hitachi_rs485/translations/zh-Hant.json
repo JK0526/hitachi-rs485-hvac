@@ -21,7 +21,7 @@
       },
       "scan": {
         "title": "正在搜尋",
-        "description": "已搜尋 {current} / {total}；找到 {found} 台裝置。"
+        "description": "目前 Slave {slave}；已搜尋 {current} / {total}；找到 {found} 台裝置。"
       },
       "select": {
         "title": "搜尋結果",
@@ -85,7 +85,7 @@
       },
       "scan": {
         "title": "正在搜尋",
-        "description": "已搜尋 {current} / {total}；找到 {found} 台裝置。"
+        "description": "目前 Slave {slave}；已搜尋 {current} / {total}；找到 {found} 台裝置。"
       },
       "select": {
         "title": "搜尋結果",
@@ -190,6 +190,9 @@
       },
       "filter_runtime": {
         "name": "濾網清洗累積運轉時間"
+      },
+      "indoor_temperature": {
+        "name": "室內溫度"
       }
     },
     "binary_sensor": {
