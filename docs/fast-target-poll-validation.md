@@ -44,8 +44,10 @@
 上一版 CI 的 lint 通過，format 因 `scanner.py`、`transport.py` 排版失敗。
 兩檔只執行 Ruff 自動格式整理，前後 Python AST 相同，未改變程式行為。
 
-整合版本機驗證結果將隨 `v0.1.2rc2` 發布前補記；GitHub Actions 必須
-全數通過後才建立該 Tag 與 Pre-release。
+整合版本機驗證：Python 3.14.7 完整 pytest **219 passed**，branch coverage
+**97.82%**；Ruff 0.17.0 check 與全倉 format check 通過；Node 22.23.4
+Monitor 前端 **35 passed**；版本一致性與品牌圖示測試通過。GitHub Actions
+仍須全數通過後才建立該 Tag 與 Pre-release。
 
 品牌檔案 `icon.png`、`icon@2x.png` 均直接沿用 main 已提交圖示；Metadata
 測試同時檢查 PNG signature 與 256×256／512×512 尺寸。
