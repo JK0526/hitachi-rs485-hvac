@@ -1,5 +1,7 @@
 # Hitachi RS485 HVAC
 
+![Hitachi RS485 HVAC integration icon](custom_components/hitachi_rs485/brand/icon.png)
+
 獨立的 Home Assistant HACS 整合，透過透明 TCP ↔ RS485 閘道器控制日立 **RC-R02XT 空調**。初始版本 **0.1.0**；正式部署前請完成 [硬體驗收](docs/v0.1.0-acceptance.md)。本專案非日立官方產品。
 
 ## 架構與系統需求
