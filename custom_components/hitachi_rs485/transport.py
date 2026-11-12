@@ -17,13 +17,23 @@ from .protocol import (
     CRCError,
     DeviceException,
     ProtocolError,
-    receive,
+    frame,
     validate,
 )
 from .trace import ProtocolTraceBuffer
 
 _LOGGER = logging.getLogger(__name__)
+_MIN_TRANSACTION_TURNAROUND_SECONDS = 0.075
 CommandKey = tuple[int, str, str]
+
+
+def _remaining_transaction_turnaround(
+    last_rx_complete: float | None, now: float
+) -> float:
+    """Return the remaining time before the next transaction may transmit."""
+    if last_rx_complete is None:
+        return 0.0
+    return max(0.0, _MIN_TRANSACTION_TURNAROUND_SECONDS - (now - last_rx_complete))
 
 
 class GatewayError(ConnectionError):
@@ -81,6 +91,11 @@ class Transport:
         self._reader_task: asyncio.Task[None] | None = None
         self._pending_response: asyncio.Future[bytes] | None = None
         self._pending_source = "response"
+        self._pending_request: bytes | None = None
+        self._rx_observed = bytearray()
+        # The physical bus is shared across TCP reconnects, so retain this
+        # timestamp until the interval has naturally elapsed.
+        self._last_rx_complete: float | None = None
         self._worker: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
         self._idle = asyncio.Event()
@@ -168,9 +183,57 @@ class Transport:
 
     async def _read_loop(self, reader: asyncio.StreamReader) -> None:
         """Continuously own the socket reader and route complete RTU frames."""
+        buffer = bytearray()
         try:
             while reader is self._reader and not self._disconnecting:
-                packet = await receive(reader)
+                chunk = await reader.read(256)
+                if not chunk:
+                    raise asyncio.IncompleteReadError(bytes(buffer), None)
+                buffer.extend(chunk)
+                if self._pending_request is not None:
+                    self._rx_observed.extend(chunk)
+                    del self._rx_observed[:-512]
+                request = self._pending_request
+                packet = None
+                if request is not None:
+                    for offset in range(len(buffer)):
+                        if len(buffer) - offset < 2 or buffer[offset] != request[0]:
+                            continue
+                        function = buffer[offset + 1]
+                        if function == request[1] | 0x80:
+                            length = 5
+                        elif function == request[1] and function in (5, 6, 16):
+                            length = 8
+                        elif function == request[1] and function in (1, 2, 3, 4):
+                            if len(buffer) - offset < 3:
+                                continue
+                            length = buffer[offset + 2] + 5
+                            if length > 255:
+                                continue
+                        else:
+                            continue
+                        candidate = bytes(buffer[offset : offset + length])
+                        if (
+                            len(candidate) == length
+                            and frame(candidate[:-2]) == candidate
+                        ):
+                            packet = candidate
+                            del buffer[: offset + length]
+                            break
+                if packet is None:
+                    del buffer[:-512]
+                    continue
+                rx_complete = asyncio.get_running_loop().time()
+                # Record a valid frame before waking the worker: its timeout or
+                # cancellation may win the race to resume after reception.
+                try:
+                    validate(request, packet)
+                except DeviceException:
+                    self._last_rx_complete = rx_complete
+                except ProtocolError:
+                    pass
+                else:
+                    self._last_rx_complete = rx_complete
                 pending = self._pending_response
                 if pending is None or pending.done():
                     _LOGGER.debug("Consumed RTU frame without a pending request")
@@ -292,16 +355,32 @@ class Transport:
                 # Observation must never turn a valid exchange into a failed one.
                 _LOGGER.debug("Modbus trace observation failed", exc_info=True)
 
-    async def _exchange(self, request: bytes, source: str) -> bytes:
+    async def _wait_for_transaction_turnaround(self) -> None:
+        """Wait only for the unelapsed RX-complete to next-TX interval."""
+        loop = asyncio.get_running_loop()
+        while remaining := _remaining_transaction_turnaround(
+            self._last_rx_complete, loop.time()
+        ):
+            await asyncio.sleep(remaining)
+
+    async def _exchange(
+        self, request: bytes, source: str, future: asyncio.Future[bytes | None]
+    ) -> bytes | None:
         await self.connect()
-        started = asyncio.get_running_loop().time()
-        self._trace("TX", request, source=source)
+        await self._wait_for_transaction_turnaround()
+        # A caller can cancel while the worker is waiting to transmit.
+        if future.cancelled():
+            return None
         reader = self._reader
         writer = self._writer
         if reader is None or writer is None:
             raise GatewayError("Gateway is not connected")
+        started = asyncio.get_running_loop().time()
+        self._trace("TX", request, source=source)
         pending = asyncio.get_running_loop().create_future()
         self._pending_response = pending
+        self._pending_request = request
+        self._rx_observed.clear()
         self._pending_source = source
         try:
             async with asyncio.timeout(self.timeout):
@@ -316,6 +395,26 @@ class Transport:
             )
             return result
         except TimeoutError:
+            observed = self._rx_observed
+            for offset in range(len(observed) - 4):
+                if observed[offset + 1] != request[1]:
+                    continue
+                length = observed[offset + 2] + 5 if request[1] in (1, 2, 3, 4) else 8
+                packet = bytes(observed[offset : offset + length])
+                if len(packet) != length:
+                    continue
+                if packet[0] == request[0] and frame(packet[:-2]) != packet:
+                    raise CRCError("Invalid CRC") from None
+                if frame(packet[:-2]) == packet and packet[0] != request[0]:
+                    raise ProtocolError("Wrong slave") from None
+            if (
+                len(observed) >= 3
+                and observed[0] == request[0]
+                and observed[1] == request[1]
+                and request[1] in (3, 4)
+                and (observed[2] == 0 or observed[2] % 2)
+            ):
+                raise ProtocolError("Unsupported read size") from None
             self._trace(
                 "TIMEOUT",
                 source=source,
@@ -339,6 +438,7 @@ class Transport:
         finally:
             if self._pending_response is pending:
                 self._pending_response = None
+                self._pending_request = None
             if not pending.done():
                 pending.cancel()
 
@@ -356,7 +456,9 @@ class Transport:
             try:
                 if item.future.cancelled():
                     continue
-                result = await self._exchange(item.request, item.source)
+                result = await self._exchange(item.request, item.source, item.future)
+                if result is None:
+                    continue
                 self.statistics.successful_requests += 1
                 if not item.future.done():
                     item.future.set_result(result)

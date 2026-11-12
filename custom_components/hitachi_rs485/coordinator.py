@@ -60,6 +60,10 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
         return self.polling_paused or self.runtime_poll_paused
 
     @property
+    def fast_poll_round_samples(self) -> int:
+        return len(self._round_times)
+
+    @property
     def last_fast_poll_round_ms(self) -> float:
         return self._round_times[-1] if self._round_times else 0
 
@@ -138,18 +142,16 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
         async with self._round_lock:
             started = asyncio.get_running_loop().time()
             successes = 0
+            completed = 0
             try:
                 for device in self.devices:
                     if background and self.background_polling_paused:
                         break
                     if slow:
                         specs = [
-                            TARGET,
-                            *(
-                                PollSpec(OPTIONAL_REGISTERS[c])
-                                for c in device.capabilities
-                                if c in OPTIONAL_REGISTERS
-                            ),
+                            PollSpec(OPTIONAL_REGISTERS[c])
+                            for c in device.capabilities
+                            if c in OPTIONAL_REGISTERS
                         ]
                         for spec in specs:
                             if background and self.background_polling_paused:
@@ -157,12 +159,18 @@ class Coordinator(DataUpdateCoordinator[dict[int, DeviceState]]):
                             await self._optional_read(device, spec)
                     else:
                         successes += await self.async_readback(device)
+                        if background and self.background_polling_paused:
+                            break
+                        # Target errors preserve the independently confirmed fast state.
+                        await self._optional_read(device, TARGET)
+                        completed += 1
             except GatewayError:
                 return
             if not slow:
-                self._round_times.append(
-                    (asyncio.get_running_loop().time() - started) * 1000
-                )
+                if self.devices and completed == len(self.devices):
+                    self._round_times.append(
+                        (asyncio.get_running_loop().time() - started) * 1000
+                    )
                 if (
                     self.devices
                     and not successes

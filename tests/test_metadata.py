@@ -11,7 +11,7 @@ def test_versions_manifest_and_translations():
     base = ROOT / "custom_components" / "hitachi_rs485"
     manifest = json.loads((base / "manifest.json").read_text())
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    assert manifest["version"] == project["project"]["version"] == VERSION == "0.1.0"
+    assert manifest["version"] == project["project"]["version"] == VERSION == "0.1.2rc2"
     assert manifest["requirements"] == []
     assert (
         manifest["integration_type"] == "hub"
@@ -58,3 +58,12 @@ async def test_back_never_commits(hass, entry, device):
     options._draft["devices"] = []
     assert (await options.async_step_back())["step_id"] == "menu"
     assert len(entry.options["devices"]) == 1
+
+
+def test_hacs_brand_icons_exist_and_are_valid_png():
+    brand = ROOT / "custom_components" / "hitachi_rs485" / "brand"
+    for name, dimensions in (("icon.png", (256, 256)), ("icon@2x.png", (512, 512))):
+        content = (brand / name).read_bytes()
+        assert content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert int.from_bytes(content[16:20], "big") == dimensions[0]
+        assert int.from_bytes(content[20:24], "big") == dimensions[1]

@@ -78,12 +78,14 @@ class HitachiRS485Monitor extends HTMLElement {
         <section class="card trace-panel"><h2>原始封包</h2><div id="trace" class="trace-list" aria-label="Modbus Raw HEX"></div></section>
         <aside id="sidebar" class="sidebar">
           <section class="card"><h2>閘道器</h2><dl class="metric-grid">
-            <dt>狀態</dt><dd id="gateway-status" aria-live="polite">等待資料</dd><dt>設定週期</dt><dd id="gateway-poll">—</dd>
+            <dt>狀態</dt><dd id="gateway-status" aria-live="polite">等待資料</dd><dt>設定 Fast 週期</dt><dd id="gateway-poll">—</dd>
             <dt>背景輪詢</dt><dd id="gateway-poll-state">等待資料</dd>
-            <dt>設備</dt><dd id="gateway-devices">—</dd><dt>最近輪詢</dt><dd id="gateway-last">—</dd>
-            <dt>平均輪詢</dt><dd id="gateway-average">—</dd><dt>佇列</dt><dd id="gateway-queue">—</dd>
+            <dt>設備</dt><dd id="gateway-devices">—</dd><dt>最近 Fast 輪詢</dt><dd id="gateway-last">—</dd>
+            <dt>平均 Fast（最近 20 輪）</dt><dd id="gateway-average">—</dd><dt>佇列</dt><dd id="gateway-queue">—</dd>
             <dt>佇列峰值</dt><dd id="gateway-queue-peak">—</dd>
-          </dl></section>
+            <dt>輪詢負載</dt><dd id="gateway-load">—</dd>
+            <dt>負載狀態</dt><dd id="gateway-load-state" aria-live="polite">等待資料</dd>
+          </dl><div id="gateway-load-warning" class="section-caption" role="status"></div></section>
           <section id="decoder-card" class="card decoder-card"><h2>封包解析</h2><dl id="decoder" class="decoder-grid"><dd class="empty">選取一筆封包以檢視內容。</dd></dl></section>
           <section class="card"><h2>設備狀態 <small id="device-summary">0 / 0 在線</small></h2><div id="devices" class="device-list"></div></section>
           <section class="card"><h2>通訊統計</h2><div id="stats-caption" class="section-caption">自本次啟動起累計</div><div id="stats-grid" class="stats-grid">
@@ -294,6 +296,15 @@ class HitachiRS485Monitor extends HTMLElement {
     this.shadowRoot.querySelector("#gateway-devices").textContent = `${coordinator.available_slaves ?? 0} / ${coordinator.configured_slaves ?? 0} 在線`;
     this.shadowRoot.querySelector("#gateway-last").textContent = `${Number(coordinator.last_poll_round_ms || 0).toFixed(1)} ms`;
     this.shadowRoot.querySelector("#gateway-average").textContent = `${Number(coordinator.average_poll_round_ms || 0).toFixed(1)} ms`;
+    const load = snapshot.poll_load || {};
+    const loadLabels = { disabled: "停用", no_data: "無資料", paused: "已暫停", insufficient_samples: "樣本不足", normal: "正常", high: "注意", over_target: "超過目標週期" };
+    this.shadowRoot.querySelector("#gateway-load").textContent = load.percent == null ? "—" : `${Number(load.percent).toFixed(1)}%`;
+    this.shadowRoot.querySelector("#gateway-load-state").textContent = loadLabels[load.state] || "無資料";
+    this.shadowRoot.querySelector("#gateway-load-warning").textContent = load.state === "high"
+      ? "注意：輪詢負載偏高，建議觀察通訊狀況。"
+      : load.state === "over_target"
+      ? "平均輪詢耗時已超過設定週期，實際更新速度可能降低。建議手動增加 Fast Poll 間隔。"
+      : load.state === "insufficient_samples" ? `已收集 ${load.samples || 0} / 20 輪，暫不判定負載警告。` : "";
     this.shadowRoot.querySelector("#gateway-queue").textContent = String(coordinator.queue_depth ?? 0);
     this.shadowRoot.querySelector("#gateway-queue-peak").textContent = String(coordinator.queue_peak ?? 0);
     this.shadowRoot.querySelector("#device-summary").textContent = `${coordinator.available_slaves ?? 0} / ${coordinator.configured_slaves ?? 0} 在線`;
@@ -443,8 +454,8 @@ class HitachiRS485Monitor extends HTMLElement {
     const decoder = this.shadowRoot.querySelector("#decoder");
     decoder.replaceChildren();
     if (!transaction) { const empty = document.createElement("dd"); empty.className = "empty"; empty.textContent = "選取一筆 Trace 以檢視封包。"; decoder.append(empty); return; }
-    const device = devices.find((item) => item.slave === transaction.slave) || null;
-    for (const [label, value] of HitachiRS485Monitor.decodeTransaction(transaction, device)) {
+    const name = HitachiRS485Monitor._deviceName(transaction.slave, devices, this._transactions);
+    for (const [label, value] of [["Device", name], ...HitachiRS485Monitor.decodeTransaction(transaction)]) {
       const dt = document.createElement("dt"); dt.textContent = label;
       const dd = document.createElement("dd"); dd.textContent = value;
       decoder.append(dt, dd);
@@ -523,9 +534,26 @@ class HitachiRS485Monitor extends HTMLElement {
     return boundedLimit === 0 ? [] : merged.slice(-boundedLimit);
   }
 
-  static _deviceName(slave, devices) {
-    const device = devices?.find((item) => item.slave === slave);
-    return device ? String(device.model).toUpperCase() : "Unknown";
+  static _deviceName(slave, devices, transactions = []) {
+    const raw = {};
+    for (const item of transactions) {
+      if (item.slave !== slave || item.tx?.source !== "scan") continue;
+      const req = this.parseHex(item.tx?.raw_hex), rx = this.parseHex(item.rx?.raw_hex);
+      if (req[1] === 3 && req[4] === 0 && req[5] === 1 && rx[0] === slave && rx[1] === 3 && rx[2] === 2 && rx.length === 7) {
+        raw[req[2] * 256 + req[3]] = rx[3] * 256 + rx[4];
+      }
+    }
+    const decode = values => {
+      if (values[7] == null || values[8] == null) return "";
+      return [values[7] >> 8, values[7] & 255, values[8] >> 8, values[8] & 255]
+        .map(x => String.fromCharCode(x)).join("").split("\0")[0].trim();
+    };
+    const candidate = decode(raw);
+    if (candidate) return `Hitachi ${candidate}`;
+    const device = devices?.find(item => item.slave === slave);
+    if (device?.series) return `Hitachi ${device.series}`;
+    const fallback = decode(device?.identity || {});
+    return fallback ? `Hitachi ${fallback}` : "Identification unavailable";
   }
 
   static _registerName(address) {

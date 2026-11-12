@@ -55,7 +55,7 @@ Commercial units expose additional fan values; unknown readings remain raw/unkno
 
 Application profile accepts only power, mode, fan and integral target temperature. Heat is allowed only by official 0004=1, observed mode 4 or explicit per-device override. No arbitrary write service, monitor write command, broadcast, energy reset, maintenance reset, filter reset, swing, dehumidifier or central-controller control exists. Protocol frame builders are internal library functions, not user-facing write endpoints.
 
-After successful FC06 acknowledgement, FC03 0040 count 5 confirms actual climate state; 0023 is separately read for target temperature because the fast block contains no target. Slow polling also reads 0023 to observe changes from a physical remote. Failed readback preserves confirmed climate state and records communication trouble. The bulletin updates the cached fast block once per second, so real-device propagation/readback timing requires hardware acceptance.
+After successful FC06 acknowledgement, FC03 0040 count 5 confirms actual climate state; 0023 is separately read for target temperature because the fast block contains no target. Each fast polling round reads 0040 count 5 followed by 0023 count 1 for each slave, sequentially, to observe physical remote changes. Slow polling reads supported optional registers only. Failed readback preserves confirmed climate state and records communication trouble. The bulletin updates the cached fast block once per second, so real-device propagation/readback timing requires hardware acceptance.
 
 ## Energy semantics
 

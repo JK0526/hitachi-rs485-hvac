@@ -68,7 +68,7 @@ class PollSpec:
 FAST = PollSpec(Register.POWER_STATE, 5)
 TARGET = PollSpec(Register.TARGET)
 DISCOVERY = PollSpec(Register.PROBE)
-IDENTITY_REGISTERS = tuple(range(5, 10))
+IDENTITY_REGISTERS = tuple(range(4, 10))
 
 
 def supports_heat(device: Device, state: DeviceState) -> bool:
@@ -132,8 +132,9 @@ def command(device: Device, state: DeviceState, field: str, value: str | int) ->
 def decode_identity(raw: dict[int, int]) -> tuple[str, str]:
     series = (
         b"".join(raw.get(r, 0).to_bytes(2, "big") for r in (7, 8))
+        .split(b"\x00", 1)[0]
         .decode("ascii", errors="replace")
-        .strip("\x00 ")
+        .strip()
     )
     version = raw.get(9)
     return series, f"{version >> 8}.{version & 255}" if version is not None else ""
@@ -145,6 +146,6 @@ def classify(raw: dict[int, int]) -> tuple[str, str, bool]:
         return "heat_exchanger", "unknown", False
     if unit in (7, 8):
         return "dehumidifier", "RC-R02XT", False
-    if all(r in raw for r in IDENTITY_REGISTERS) and unit in UNIT_TYPES:
+    if unit in UNIT_TYPES:
         return "air_conditioner", "RC-R02XT", True
     return "unknown_legacy", "unknown", False

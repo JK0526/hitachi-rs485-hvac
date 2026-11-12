@@ -38,14 +38,44 @@ def _snapshot(hub: Any) -> dict[str, Any]:
             else "paused"
             if c.runtime_poll_paused
             else "running",
+            "poll_load": _poll_load(c),
             "entries": hub.transport.trace.snapshot(),
         }
     )
     return result
 
 
+def _poll_load(coordinator: Any) -> dict[str, Any]:
+    """Describe load without changing scheduling or emitting warnings."""
+    samples = coordinator.fast_poll_round_samples
+    percent = None
+    if coordinator.polling_paused:
+        state = "disabled"
+    elif not coordinator.devices or not samples:
+        state = "no_data"
+    elif coordinator.runtime_poll_paused:
+        state = "paused"
+    else:
+        percent = (
+            coordinator.average_fast_poll_round_ms
+            / (coordinator.fast_poll_interval * 1000)
+            * 100
+        )
+        state = (
+            "insufficient_samples"
+            if samples < 20
+            else "over_target"
+            if percent >= 100
+            else "high"
+            if percent >= 80
+            else "normal"
+        )
+    return {"percent": percent, "state": state, "samples": samples}
+
+
 def _empty_snapshot() -> dict[str, Any]:
     return {
+        "poll_load": {"percent": None, "state": "no_data", "samples": 0},
         "connected": False,
         "poll_interval": None,
         "polling_paused": True,
